@@ -20,3 +20,19 @@ Best case: about **1,870 ticks/s**, which is:
 
 These exclude network inference and learning updates; expect a 2–3× drop once
 those are included. Scaling flattens above 4 processes on this contended machine.
+
+## Training machine (4P+6E cores, 16 GB, Python 3.13)
+
+Same benchmark, idle policy. Load average was already ~4.8 before the run.
+
+| Processes | Aggregate ticks/s |
+|---:|---:|
+| 1 | 2,798 |
+| 4 | 10,788 |
+| 6 | 12,883 |
+| 8 | 14,726 |
+| 10 | 16,056 |
+
+That gives about **16,000 ticks/s**: ~170M transitions per hour for one learning team, or
+~9,600 full games per hour. This is ~8.6× the WSL laptop, so all training runs go
+on the training machine.

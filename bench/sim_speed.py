@@ -13,7 +13,7 @@ import importlib.util
 import itertools
 import json
 import multiprocessing as mp
-import tempfile
+import os
 import time
 from pathlib import Path
 
@@ -33,8 +33,11 @@ _module_counter = itertools.count()
 
 def _policy_path(name):
     if name in _POLICY_SOURCES:
-        path = Path(tempfile.gettempdir()) / f"bench_policy_{name}.py"
-        path.write_text(_POLICY_SOURCES[name], encoding="utf-8")
+        directory = ROOT / "bench" / ".policies"
+        directory.mkdir(exist_ok=True)
+        path = directory / f"{name}-{os.getpid()}.py"
+        if not path.exists():
+            path.write_text(_POLICY_SOURCES[name], encoding="utf-8")
         return str(path)
     return str(ROOT / name)
 
