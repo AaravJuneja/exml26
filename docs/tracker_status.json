@@ -1,0 +1,20 @@
+{
+  "summary": "Training infrastructure is built and running on the training machine. The simulator is an exact copy of the engine (bit-identical in parity tests). PPO training reaches about 240M learner samples per hour. M2 (learning to score against idle opponents) is training now. In parallel: the single-file exporter, the evaluation harness and five new scripted training opponents are being built, and the Phase 1 code is under review.",
+  "milestones": [
+    {"id": "M0", "title": "Fast exact simulator, training harness, throughput", "state": "done", "note": "Exact engine replica; ~240M samples/h on the training machine"},
+    {"id": "M1", "title": "Single-file model.py export + latency proof", "state": "active", "note": "Building exporter and latency tool"},
+    {"id": "M2", "title": "Learn to score vs idle (≥8 captures/match, ≤2 wall deaths/player)", "state": "active", "note": "Run m2a training"},
+    {"id": "M3", "title": "Beat scripted pool (≥90% wins vs provided bots)", "state": "todo", "note": "5 new training opponents in progress"},
+    {"id": "M4", "title": "Self-play league", "state": "todo", "note": ""},
+    {"id": "M5", "title": "Improvements: GRU, sonar, bigger nets, PBT", "state": "todo", "note": ""},
+    {"id": "M6", "title": "Freeze, export, final 64-seed test, latency audit", "state": "todo", "note": ""}
+  ],
+  "eval_header": [],
+  "eval_rows": [],
+  "runs": [
+    {"name": "m2a", "state": "running", "description": "PPO from scratch vs idle opponents; MLP 128x128; progress shaping 0.5 annealing to 0.1 over 150M samples."}
+  ],
+  "updates": [
+    {"time": "2026-10-25 23:10", "text": "Exact simulator (bit-identical to engine), feature encoder, PPO trainer done; M2 training started on the training machine."}
+  ]
+}
