@@ -42,7 +42,8 @@ def test_gae_matches_reference_with_respawn_gaps():
 def test_training_smoke(tmp_path):
     main(["--name", "smoke", "--runs", str(tmp_path), "--workers", "2", "--envs", "2",
           "--max-ticks", "200", "--updates", "2", "--minibatch", "256", "--save-every", "1",
-          "--snapshot-every", "1", "--opponents", "idle:1,baseline:1", "--learner-threads", "2"])
+          "--snapshot-every", "1", "--opponents", "idle:1,baseline:1,mirror:1,pool:1",
+          "--learner-threads", "2"])
     lines = (tmp_path / "smoke" / "log.jsonl").read_text().splitlines()
     assert len(lines) == 2
     record = json.loads(lines[-1])
