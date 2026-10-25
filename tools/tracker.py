@@ -37,6 +37,36 @@ def load_log(run):
     return rows
 
 
+def load_eval(run):
+    path = CACHE / run / "eval.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def eval_section(run):
+    rows = load_eval(run)
+    if not rows:
+        return ""
+    opponents = sorted({name for r in rows for name in r["vs"]})
+    head = "".join(f"<th>{html.escape(o)}: win% [95% CI] · GD · wall/pl</th>" for o in opponents)
+    body = ""
+    for r in rows[-8:][::-1]:
+        cells = ""
+        for o in opponents:
+            v = r["vs"].get(o)
+            if v is None:
+                cells += "<td></td>"
+                continue
+            lo, hi = v["win_ci"]
+            wall = v.get("wall_deaths_pp")
+            cells += (f"<td>{100 * v['win_rate']:.0f}% [{100 * lo:.0f}, {100 * hi:.0f}] · "
+                      f"{v['goal_diff']:+.2f} · {wall:.2f}</td>" if wall is not None else "<td></td>")
+        body += f"<tr><td>u{r['update']}</td>{cells}</tr>"
+    return ("<p class='muted'>Held-out gauntlet (seeds 1000+, both sides, greedy decoding)</p>"
+            f"<table><tr><th>snapshot</th>{head}</tr>{body}</table>")
+
+
 def sparkline(xs, ys, color, width=300, height=110):
     if len(ys) < 2:
         return "<div class='muted'>not enough data</div>"
@@ -86,7 +116,7 @@ def run_section(run):
     table = ("<table><tr><th>Training opponent</th><th class='num'>matches</th>"
              "<th class='num'>win rate</th><th class='num'>goal diff</th></tr>" + opp_rows + "</table>"
              if opp_rows else "")
-    return head + meta + f"<div class='charts'>{cards}</div>" + table
+    return head + meta + eval_section(run["name"]) + f"<div class='charts'>{cards}</div>" + table
 
 
 def render():
