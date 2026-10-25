@@ -27,6 +27,15 @@ _POLICY_SOURCES = {
         "def decide(observation):\n"
         "    return random.uniform(-1, 1), random.uniform(-1, 1), random.random() < 0.02\n"
     ),
+    # Deterministic and fast enough to hit walls, ramps and other spheres.
+    "wiggle": (
+        "import math\n"
+        "def decide(observation):\n"
+        "    t, me = observation['tick'], observation['self']\n"
+        "    phase = t // 25 + me['id']\n"
+        "    throttle = 1.0 if phase % 3 else -0.4\n"
+        "    return throttle, math.sin(0.07 * t + me['id']), phase % 7 == 0\n"
+    ),
 }
 _module_counter = itertools.count()
 
@@ -101,8 +110,11 @@ def _patch():
     game_module.TelemetryRecorder = _NullTelemetry
 
 
-def run_game(red, blue, seed, ticks):
+def run_game(red, blue, seed, ticks, broadphase=False, trace=None):
     _patch()
+    from bench import broadphase as bp
+
+    (bp.install if broadphase else bp.uninstall)()
     _InProcessWorker.decide_seconds = 0.0
     start = time.perf_counter()
     teams = [
@@ -117,6 +129,11 @@ def run_game(red, blue, seed, ticks):
     start = time.perf_counter()
     while not game.is_over():
         game.step()
+        if trace is not None:
+            trace.append((
+                tuple((s.x, s.y, s.z, s.vx, s.vy, s.vz, s.alive) for s in game.spheres),
+                tuple(sorted(game.score.items())),
+            ))
     elapsed = time.perf_counter() - start
     deaths = len(game._death_log)
     return {
@@ -131,7 +148,7 @@ def run_game(red, blue, seed, ticks):
 
 
 def _worker(args):
-    return run_game(*args)
+    return run_game(*args[:4], broadphase=args[4])
 
 
 def main():
@@ -139,18 +156,34 @@ def main():
     parser.add_argument("--ticks", type=int, default=1000)
     parser.add_argument("--procs", default="1,2,4,6")
     parser.add_argument("--policies", default="idle,random,teams/example_team/model.py")
+    parser.add_argument("--broadphase", action="store_true")
+    parser.add_argument("--parity", type=int, default=0, help="check N seeds, then exit")
     args = parser.parse_args()
+
+    if args.parity:
+        for seed in range(args.parity):
+            plain, fast = [], []
+            a = run_game("wiggle", "wiggle", seed, args.ticks, broadphase=False, trace=plain)
+            b = run_game("wiggle", "wiggle", seed, args.ticks, broadphase=True, trace=fast)
+            print(json.dumps({
+                "seed": seed, "identical": plain == fast, "deaths": [a["deaths"], b["deaths"]],
+                "plain_ticks_per_s": round(a["ticks_per_s"]),
+                "broadphase_ticks_per_s": round(b["ticks_per_s"]),
+            }), flush=True)
+            if plain != fast:
+                raise SystemExit(f"parity failure on seed {seed}")
+        return
 
     results = {"single": {}, "parallel": {}}
     for policy in args.policies.split(","):
-        r = run_game(policy, policy, seed=1234, ticks=args.ticks)
+        r = run_game(policy, policy, seed=1234, ticks=args.ticks, broadphase=args.broadphase)
         r["engine_only_ticks_per_s"] = r["ticks"] / (r["step_s"] - r["decide_s"])
         results["single"][policy] = r
         print(json.dumps({"policy": policy, **r}), flush=True)
 
     policy = "random"
     for procs in (int(p) for p in args.procs.split(",")):
-        jobs = [(policy, policy, 5000 + i, args.ticks) for i in range(procs)]
+        jobs = [(policy, policy, 5000 + i, args.ticks, args.broadphase) for i in range(procs)]
         start = time.perf_counter()
         with mp.get_context("spawn").Pool(procs) as pool:
             outs = pool.map(_worker, jobs)

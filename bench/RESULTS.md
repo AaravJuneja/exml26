@@ -36,3 +36,24 @@ Same benchmark, idle policy. Load average was already ~4.8 before the run.
 That gives about **16,000 ticks/s**: ~170M transitions per hour for one learning team, or
 ~9,600 full games per hour. This is ~8.6× the WSL laptop, so all training runs go
 on the training machine.
+
+## Exact broad-phase filter (`bench/broadphase.py`)
+
+Each sphere is resolved alone against only nearby obstacles and ramps (bounding
+circle plus a 3.5-unit margin, original order preserved). The unmodified
+engine functions do the work; only their input lists shrink.
+
+**Parity:** `--parity 10 --ticks 6000` gave bit-identical position, velocity,
+alive state and score on every tick of 10 full games with a fast,
+collision-heavy deterministic policy (64–109 deaths per game).
+
+| Training machine, `wiggle` policy, 6,000 ticks | Ticks/s |
+|---|---:|
+| 1 process, unfiltered | ~3,000 |
+| 1 process, filtered | ~15,800 (5.4×) |
+| 4 processes, filtered | 65,400 |
+| 8 processes, filtered | **92,200** |
+| 10 processes, filtered | 87,100 |
+
+That is ~55,000 full games per hour of raw simulation. Network inference,
+feature building and PPO updates will be the bottleneck from here, not physics.
