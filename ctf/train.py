@@ -9,6 +9,7 @@ clipped PPO epochs. Logs go to runs/NAME/log.jsonl, policies to runs/NAME/polici
 """
 
 import argparse
+import glob
 import json
 import multiprocessing as mp
 import os
@@ -79,6 +80,7 @@ class Trainer:
         self.update = 0
         self.samples = 0
         self.mix = parse_mix(args.opponents)
+        self.opp_winrate = {}  # opponent spec -> EMA of learner win rate (PFSP difficulty)
         ckpt = self.run_dir / "checkpoint.pt"
         if ckpt.exists() and not args.fresh:
             self.load(ckpt)
@@ -91,6 +93,7 @@ class Trainer:
             "actor": self.actor.state_dict(), "critic": self.critic.state_dict(),
             "optimizer": self.optimizer.state_dict(), "norm": self.norm.state(),
             "ret_norm": self.ret_norm.state(), "update": self.update, "samples": self.samples,
+            "opp_winrate": self.opp_winrate,
             "args": vars(self.args),
         }
 
@@ -108,6 +111,7 @@ class Trainer:
         if not weights_only:
             self.optimizer.load_state_dict(state["optimizer"])
             self.update, self.samples = state["update"], state["samples"]
+            self.opp_winrate = state.get("opp_winrate", {})
 
     def export_policy(self, path):
         save_policy(path, actor_to_numpy(self.actor), self.norm.mean, self.norm.std,
@@ -131,17 +135,43 @@ class Trainer:
         frac = self.progress_fraction()
         return self.args.ent_coef * (1.0 - frac) + self.args.ent_final * frac
 
+    def pool(self):
+        """Frozen league opponents: recent own snapshots plus any extra policy globs."""
+        own = sorted((self.run_dir / "policies").glob("u*.npz"))
+        own = own[-self.args.pool_size:] if self.args.pool_size else []
+        extra = []
+        for pattern in self.args.pool_extra:
+            extra += sorted(glob.glob(pattern))
+        return [str(path) for path in own] + extra
+
+    def pick_pool_opponent(self, pool):
+        """Prioritized fictitious self-play: weight (1 - winrate)^2, floor 0.05."""
+        weights = np.array([(1.0 - self.opp_winrate.get("policy:" + path, 0.5)) ** 2 + 0.05
+                            for path in pool])
+        return "policy:" + pool[int(self.rng.choice(len(pool), p=weights / weights.sum()))]
+
     def jobs(self, count):
         names = [n for n, _ in self.mix]
         probs = [p for _, p in self.mix]
+        pool = self.pool() if "pool" in names else []
         out = []
         for _ in range(count):
+            name = names[int(self.rng.choice(len(names), p=probs))]
+            if name == "pool":
+                name = self.pick_pool_opponent(pool) if pool else "self"
             out.append({
                 "seed": int(self.rng.integers(EVAL_SEED_LIMIT, 2**31 - 1)),
                 "side": "red" if self.rng.random() < 0.5 else "blue",
-                "opponent": names[int(self.rng.choice(len(names), p=probs))],
+                "opponent": name,
             })
         return out
+
+    def record_results(self, stats):
+        for s in stats:
+            key = s["opponent"]
+            value = 1.0 if s["result"] == "win" else 0.0
+            old = self.opp_winrate.get(key, 0.5)
+            self.opp_winrate[key] = 0.9 * old + 0.1 * value
 
     # --------------------------------------------------------------- update
     def ppo_update(self, batch):
@@ -242,6 +272,7 @@ class Trainer:
                 batch = {key: np.concatenate([r[key] for r in results], axis=1)
                          for key in ("obs", "actions", "logp", "rewards", "alive")}
                 stats = [s for r in results for s in r["stats"]]
+                self.record_results(stats)
                 learn = self.ppo_update(batch)
                 t2 = time.perf_counter()
                 self.update += 1
@@ -288,8 +319,11 @@ class Trainer:
             "by_opponent": {},
             **learn,
         }
-        for name in sorted({s["opponent"] for s in stats}):
-            subset = [s for s in stats if s["opponent"] == name]
+        def group(name):
+            return "pool" if name.startswith("policy:") else name
+
+        for name in sorted({group(s["opponent"]) for s in stats}):
+            subset = [s for s in stats if group(s["opponent"]) == name]
             record["by_opponent"][name] = {
                 "n": len(subset),
                 "win_rate": sum(s["result"] == "win" for s in subset) / len(subset),
@@ -331,6 +365,8 @@ def main(argv=None):
     p.add_argument("--device", default="cpu")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--init", default="")
+    p.add_argument("--pool-size", type=int, default=20, help="own snapshots kept in the league")
+    p.add_argument("--pool-extra", nargs="*", default=[], help="globs of extra league policies")
     p.add_argument("--fresh", action="store_true")
     args = p.parse_args(argv)
     Trainer(args).run()

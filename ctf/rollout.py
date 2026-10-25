@@ -49,8 +49,11 @@ class PolicyTeam:
 _POLICY_CACHE = {}
 
 
-def make_opponent(spec, sphere_ids, rng):
-    """spec: scripted name/path, or 'policy:/path/file.npz' (sampled), 'greedy:/path' ."""
+def make_opponent(spec, sphere_ids, rng, current=None):
+    """spec: scripted name/path, 'self' (current policy, sampled),
+    'policy:/path/file.npz' (sampled) or 'greedy:/path/file.npz'."""
+    if spec == "self":
+        return PolicyTeam(current, sphere_ids, rng)
     if spec.startswith(("policy:", "greedy:")):
         kind, path = spec.split(":", 1)
         if path not in _POLICY_CACHE:
@@ -80,7 +83,7 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0):
         trackers.append(RewardTracker(match, learner_team, reward_weights))
         learner_ids.append([s.id for s in mine])
         memories.append([F.PlayerMemory() for _ in mine])
-        opponents.append(make_opponent(job["opponent"], theirs, rng))
+        opponents.append(make_opponent(job["opponent"], theirs, rng, current=actor))
         wipes.append([int(rng.integers(1, T)) if rng.random() < memory_wipe_prob else -1
                       for _ in mine])
 
