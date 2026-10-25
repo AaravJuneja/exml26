@@ -1,20 +1,90 @@
 {
-  "summary": "Training infrastructure is built and running on the training machine. The simulator is an exact copy of the engine (bit-identical in parity tests). PPO training reaches about 240M learner samples per hour. M2 (learning to score against idle opponents) is training now. In parallel: the single-file exporter, the evaluation harness and five new scripted training opponents are being built, and the Phase 1 code is under review.",
-  "milestones": [
-    {"id": "M0", "title": "Fast exact simulator, training harness, throughput", "state": "done", "note": "Exact engine replica; ~240M samples/h on the training machine"},
-    {"id": "M1", "title": "Single-file model.py export + latency proof", "state": "active", "note": "Building exporter and latency tool"},
-    {"id": "M2", "title": "Learn to score vs idle (≥8 captures/match, ≤2 wall deaths/player)", "state": "active", "note": "Run m2a training"},
-    {"id": "M3", "title": "Beat scripted pool (≥90% wins vs provided bots)", "state": "todo", "note": "5 new training opponents in progress"},
-    {"id": "M4", "title": "Self-play league", "state": "todo", "note": ""},
-    {"id": "M5", "title": "Improvements: GRU, sonar, bigger nets, PBT", "state": "todo", "note": ""},
-    {"id": "M6", "title": "Freeze, export, final 64-seed test, latency audit", "state": "todo", "note": ""}
+ "summary": "Infrastructure is complete and reviewed:<ul><li>exact simulator</li><li>PPO trainer (~240M samples/h)</li><li>self-play league with PFSP and mirror self-play</li><li>single-file exporter, about 1 ms callbacks against the 30 ms limit</li><li>paired-seed evaluation harness</li><li>automatic held-out evaluation</li></ul>The first review found two real reward bugs, now fixed: death penalties disappeared after 200 deaths, and progress shaping could be farmed by dying. Shaping is now potential-based. M2 restarted as run <b>m2b</b> (learning to score against idle opponents). In progress: review round 2 plus Phase 2; five new scripted training opponents; a replay viewer.",
+ "milestones": [
+  {
+   "id": "M0",
+   "title": "Fast exact simulator, training harness, throughput",
+   "state": "done",
+   "note": "Exact engine replica; ~240M samples/h on the training machine"
+  },
+  {
+   "id": "M1",
+   "title": "Single-file model.py export + latency proof",
+   "state": "done",
+   "note": "model.py export bit-exact; callback p99 ~1 ms under load (30 ms limit)"
+  },
+  {
+   "id": "M2",
+   "title": "Learn to score vs idle (\u22658 captures/match, \u22642 wall deaths/player)",
+   "state": "active",
+   "note": "m2a stopped (reward bugs); m2b running with fixed rewards"
+  },
+  {
+   "id": "M3",
+   "title": "Beat scripted pool (\u226590% wins vs provided bots)",
+   "state": "todo",
+   "note": "5 new training opponents in progress"
+  },
+  {
+   "id": "M4",
+   "title": "Self-play league",
+   "state": "active",
+   "note": "League infrastructure (PFSP pool, mirror self-play) built"
+  },
+  {
+   "id": "M5",
+   "title": "Improvements: GRU, sonar, bigger nets, PBT",
+   "state": "todo",
+   "note": ""
+  },
+  {
+   "id": "M6",
+   "title": "Freeze, export, final 64-seed test, latency audit",
+   "state": "todo",
+   "note": ""
+  }
+ ],
+ "eval_header": [
+  "Bot",
+  "vs baseline W-D-L",
+  "GD",
+  "Wall deaths / player"
+ ],
+ "eval_rows": [
+  [
+   "baseline (reference)",
+   "\u2014",
+   "\u2014",
+   "0.0"
   ],
-  "eval_header": [],
-  "eval_rows": [],
-  "runs": [
-    {"name": "m2a", "state": "running", "description": "PPO from scratch vs idle opponents; MLP 128x128; progress shaping 0.5 annealing to 0.1 over 150M samples."}
+  [
+   "example",
+   "4-10-50",
+   "-1.55",
+   "21.6"
   ],
-  "updates": [
-    {"time": "2026-10-25 23:10", "text": "Exact simulator (bit-identical to engine), feature encoder, PPO trainer done; M2 training started on the training machine."}
+  [
+   "example2",
+   "0-11-53",
+   "-2.14",
+   "22.1"
   ]
+ ],
+ "runs": [
+  {
+   "name": "m2b",
+   "state": "running",
+   "description": "PPO from scratch vs idle opponents; MLP 128x128; potential-based route shaping 0.5 annealing to 0.1 over 300M samples; win bonus 1.0."
+  }
+ ],
+ "updates": [
+  {
+   "time": "2026-10-25 23:10",
+   "text": "Exact simulator (bit-identical to engine), feature encoder, PPO trainer done; M2 training started on the training machine."
+  },
+  {
+   "time": "2026-10-25 23:45",
+   "text": "Phase 1 reviewed (2 critical reward bugs fixed). Exporter (M1) done: bit-exact, ~1 ms callbacks. Evaluation harness done. League + mirror self-play added. m2b training."
+  }
+ ]
 }
