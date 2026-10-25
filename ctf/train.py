@@ -123,7 +123,8 @@ class Trainer:
         weights = dict(DEFAULT_WEIGHTS)
         weights.update(json.loads(self.args.reward_weights))
         frac = self.progress_fraction()
-        weights["progress"] *= (1.0 - frac) + frac * self.args.progress_final
+        weights["shaping"] *= (1.0 - frac) + frac * self.args.progress_final
+        weights["gamma"] = self.args.gamma
         return weights
 
     def entropy_coef(self):

@@ -11,7 +11,7 @@ import json
 import numpy as np
 
 from ctf.features import FEATURE_DIM, N_THROTTLE, N_TURN
-from ctf.nets import HEAD_SIZES, NumpyActor
+from ctf.npnets import HEAD_SIZES, NumpyActor
 
 FEATURE_VERSION = 1
 

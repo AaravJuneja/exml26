@@ -1,0 +1,707 @@
+{
+ "description": "Scripted reference round robin: baseline, example, example2 and idle, every pair, seeds 1000-1031 on both sides (64 full 6,000-tick matches per pair) in ctf.sim.Match via ctf.evaluate. Results are from A's perspective; CIs are 95% paired bootstrap over seeds (10,000 replicates). Scripted models receive the undocumented teammates field (@full), as on the local backend.",
+ "command": "python -m ctf.evaluate --round-robin baseline example example2 idle --seeds 1000-1031 --workers 10 --out runs/eval/baseline_rr --json runs/eval/baseline_rr.json",
+ "date": "2026-10-25",
+ "machine": "training machine (10 cores), Python 3.14; shared with a 10-worker training job (load average 11-18), so throughput figures are lower bounds",
+ "table": [
+  {
+   "a": "baseline",
+   "b": "example",
+   "wdl": "50-10-4",
+   "win_rate": 0.7812,
+   "win_rate_ci": [
+    0.6875,
+    0.875
+   ],
+   "goal_diff": 1.5469,
+   "goal_diff_ci": [
+    1.0469,
+    1.9844
+   ],
+   "a_win_rate_as_red": 0.6562,
+   "a_win_rate_as_blue": 0.9062,
+   "captures_per_match_a": 1.8906,
+   "captures_per_match_b": 0.3438,
+   "wall_deaths_per_player_a": 0.0,
+   "wall_deaths_per_player_b": 21.599
+  },
+  {
+   "a": "baseline",
+   "b": "example2",
+   "wdl": "53-11-0",
+   "win_rate": 0.8281,
+   "win_rate_ci": [
+    0.7188,
+    0.9219
+   ],
+   "goal_diff": 2.1406,
+   "goal_diff_ci": [
+    1.7656,
+    2.5312
+   ],
+   "a_win_rate_as_red": 0.9375,
+   "a_win_rate_as_blue": 0.7188,
+   "captures_per_match_a": 2.1562,
+   "captures_per_match_b": 0.0156,
+   "wall_deaths_per_player_a": 0.0,
+   "wall_deaths_per_player_b": 22.1406
+  },
+  {
+   "a": "baseline",
+   "b": "idle",
+   "wdl": "64-0-0",
+   "win_rate": 1.0,
+   "win_rate_ci": [
+    1.0,
+    1.0
+   ],
+   "goal_diff": 4.5938,
+   "goal_diff_ci": [
+    4.2188,
+    4.9219
+   ],
+   "a_win_rate_as_red": 1.0,
+   "a_win_rate_as_blue": 1.0,
+   "captures_per_match_a": 4.5938,
+   "captures_per_match_b": 0.0,
+   "wall_deaths_per_player_a": 0.0,
+   "wall_deaths_per_player_b": 0.0
+  },
+  {
+   "a": "example",
+   "b": "example2",
+   "wdl": "5-59-0",
+   "win_rate": 0.0781,
+   "win_rate_ci": [
+    0.0156,
+    0.1406
+   ],
+   "goal_diff": 0.375,
+   "goal_diff_ci": [
+    0.0781,
+    0.7656
+   ],
+   "a_win_rate_as_red": 0.0,
+   "a_win_rate_as_blue": 0.1562,
+   "captures_per_match_a": 0.375,
+   "captures_per_match_b": 0.0,
+   "wall_deaths_per_player_a": 21.3542,
+   "wall_deaths_per_player_b": 21.7969
+  },
+  {
+   "a": "example",
+   "b": "idle",
+   "wdl": "3-61-0",
+   "win_rate": 0.0469,
+   "win_rate_ci": [
+    0.0,
+    0.0938
+   ],
+   "goal_diff": 0.3281,
+   "goal_diff_ci": [
+    0.0,
+    0.7188
+   ],
+   "a_win_rate_as_red": 0.0,
+   "a_win_rate_as_blue": 0.0938,
+   "captures_per_match_a": 0.3281,
+   "captures_per_match_b": 0.0,
+   "wall_deaths_per_player_a": 20.7917,
+   "wall_deaths_per_player_b": 0.0
+  },
+  {
+   "a": "example2",
+   "b": "idle",
+   "wdl": "0-64-0",
+   "win_rate": 0.0,
+   "win_rate_ci": [
+    0.0,
+    0.0
+   ],
+   "goal_diff": 0.0,
+   "goal_diff_ci": [
+    0.0,
+    0.0
+   ],
+   "a_win_rate_as_red": 0.0,
+   "a_win_rate_as_blue": 0.0,
+   "captures_per_match_a": 0.0,
+   "captures_per_match_b": 0.0,
+   "wall_deaths_per_player_a": 21.75,
+   "wall_deaths_per_player_b": 0.0
+  }
+ ],
+ "throughput": {
+  "round_robin_10_workers": {
+   "workers": 10,
+   "elapsed_s": 31.09,
+   "matches_per_min": 741.02,
+   "ticks_per_s": 74102.0,
+   "mean_match_wall_s": 0.796
+  },
+  "baseline_vs_baseline_10_workers": {
+   "spec_a": "baseline",
+   "spec_b": "baseline",
+   "matches": 200,
+   "workers": 10,
+   "elapsed_s": 21.24,
+   "matches_per_min": 564.93,
+   "ticks_per_s": 56493.4,
+   "mean_match_wall_s": 1.04
+  },
+  "random128_vs_baseline_10_workers": {
+   "spec_a": "random128",
+   "spec_b": "baseline",
+   "matches": 200,
+   "workers": 10,
+   "elapsed_s": 40.12,
+   "matches_per_min": 299.09,
+   "ticks_per_s": 29908.8,
+   "mean_match_wall_s": 1.957
+  },
+  "baseline_vs_baseline_1_worker": {
+   "spec_a": "baseline",
+   "spec_b": "baseline",
+   "matches": 10,
+   "workers": 1,
+   "elapsed_s": 6.58,
+   "matches_per_min": 91.25,
+   "ticks_per_s": 9125.2,
+   "mean_match_wall_s": 0.652
+  },
+  "random128_vs_baseline_1_worker": {
+   "spec_a": "random128",
+   "spec_b": "baseline",
+   "matches": 10,
+   "workers": 1,
+   "elapsed_s": 10.89,
+   "matches_per_min": 55.08,
+   "ticks_per_s": 5508.4,
+   "mean_match_wall_s": 1.086
+  }
+ },
+ "summaries": [
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 50,
+   "draws": 10,
+   "losses": 4,
+   "win_rate": 0.7812,
+   "win_rate_ci": [
+    0.6875,
+    0.875
+   ],
+   "draw_rate": 0.1562,
+   "loss_rate": 0.0625,
+   "match_points": 50,
+   "match_points_per_match": 0.7812,
+   "match_points_ci": [
+    0.6875,
+    0.875
+   ],
+   "draw_adjusted_score": 0.8594,
+   "draw_adjusted_ci": [
+    0.7891,
+    0.9219
+   ],
+   "goal_diff_mean": 1.5469,
+   "goal_diff_ci": [
+    1.0469,
+    1.9844
+   ],
+   "p_goal_diff_positive": 1.0,
+   "goals_for_mean": 1.8906,
+   "goals_against_mean": 0.3438,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 21,
+     "draws": 8,
+     "losses": 3,
+     "win_rate": 0.6562,
+     "goal_diff_mean": 0.7812
+    },
+    "blue": {
+     "n": 32,
+     "wins": 29,
+     "draws": 2,
+     "losses": 1,
+     "win_rate": 0.9062,
+     "goal_diff_mean": 2.3125
+    }
+   },
+   "a": {
+    "captures_per_match": 1.8906,
+    "pickups_per_match": 5.6406,
+    "conversion": 0.3352,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 3.3854,
+    "carrier_deaths_per_match": 3.5156,
+    "matches_with_capture": 56,
+    "median_first_capture_tick": 1983.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0129,
+    "decide_max_ms": 8.9718
+   },
+   "b": {
+    "captures_per_match": 0.3438,
+    "pickups_per_match": 1.4219,
+    "conversion": 0.2418,
+    "wall_deaths_per_player_per_match": 21.599,
+    "player_deaths_per_player_per_match": 1.0729,
+    "carrier_deaths_per_match": 1.0312,
+    "matches_with_capture": 6,
+    "median_first_capture_tick": 568.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0105,
+    "decide_max_ms": 23.4554
+   },
+   "meta": {
+    "spec_a": "baseline@full",
+    "spec_b": "example@full",
+    "label_a": "baseline",
+    "label_b": "example",
+    "digest_a": "8f17f9620c4328b3",
+    "digest_b": "2549c0e4a4bdeae4",
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/baseline_vs_example.jsonl"
+   }
+  },
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 53,
+   "draws": 11,
+   "losses": 0,
+   "win_rate": 0.8281,
+   "win_rate_ci": [
+    0.7188,
+    0.9219
+   ],
+   "draw_rate": 0.1719,
+   "loss_rate": 0.0,
+   "match_points": 53,
+   "match_points_per_match": 0.8281,
+   "match_points_ci": [
+    0.7188,
+    0.9219
+   ],
+   "draw_adjusted_score": 0.9141,
+   "draw_adjusted_ci": [
+    0.8594,
+    0.9609
+   ],
+   "goal_diff_mean": 2.1406,
+   "goal_diff_ci": [
+    1.7656,
+    2.5312
+   ],
+   "p_goal_diff_positive": 1.0,
+   "goals_for_mean": 2.1562,
+   "goals_against_mean": 0.0156,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 30,
+     "draws": 2,
+     "losses": 0,
+     "win_rate": 0.9375,
+     "goal_diff_mean": 2.7812
+    },
+    "blue": {
+     "n": 32,
+     "wins": 23,
+     "draws": 9,
+     "losses": 0,
+     "win_rate": 0.7188,
+     "goal_diff_mean": 1.5
+    }
+   },
+   "a": {
+    "captures_per_match": 2.1562,
+    "pickups_per_match": 5.2969,
+    "conversion": 0.4071,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 3.0885,
+    "carrier_deaths_per_match": 2.8594,
+    "matches_with_capture": 53,
+    "median_first_capture_tick": 1533.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0108,
+    "decide_max_ms": 8.5824
+   },
+   "b": {
+    "captures_per_match": 0.0156,
+    "pickups_per_match": 1.4219,
+    "conversion": 0.011,
+    "wall_deaths_per_player_per_match": 22.1406,
+    "player_deaths_per_player_per_match": 1.1354,
+    "carrier_deaths_per_match": 1.3125,
+    "matches_with_capture": 1,
+    "median_first_capture_tick": 992.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0099,
+    "decide_max_ms": 8.4971
+   },
+   "meta": {
+    "spec_a": "baseline@full",
+    "spec_b": "example2@full",
+    "label_a": "baseline",
+    "label_b": "example2",
+    "digest_a": "8f17f9620c4328b3",
+    "digest_b": "b9982d41fca8b63a",
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/baseline_vs_example2.jsonl"
+   }
+  },
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 64,
+   "draws": 0,
+   "losses": 0,
+   "win_rate": 1.0,
+   "win_rate_ci": [
+    1.0,
+    1.0
+   ],
+   "draw_rate": 0.0,
+   "loss_rate": 0.0,
+   "match_points": 64,
+   "match_points_per_match": 1.0,
+   "match_points_ci": [
+    1.0,
+    1.0
+   ],
+   "draw_adjusted_score": 1.0,
+   "draw_adjusted_ci": [
+    1.0,
+    1.0
+   ],
+   "goal_diff_mean": 4.5938,
+   "goal_diff_ci": [
+    4.2188,
+    4.9219
+   ],
+   "p_goal_diff_positive": 1.0,
+   "goals_for_mean": 4.5938,
+   "goals_against_mean": 0.0,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 32,
+     "draws": 0,
+     "losses": 0,
+     "win_rate": 1.0,
+     "goal_diff_mean": 4.4375
+    },
+    "blue": {
+     "n": 32,
+     "wins": 32,
+     "draws": 0,
+     "losses": 0,
+     "win_rate": 1.0,
+     "goal_diff_mean": 4.75
+    }
+   },
+   "a": {
+    "captures_per_match": 4.5938,
+    "pickups_per_match": 5.0469,
+    "conversion": 0.9102,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 0.0,
+    "carrier_deaths_per_match": 0.0,
+    "matches_with_capture": 64,
+    "median_first_capture_tick": 1189.5,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0172,
+    "decide_max_ms": 43.7891
+   },
+   "b": {
+    "captures_per_match": 0.0,
+    "pickups_per_match": 0.0,
+    "conversion": null,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 3.8698,
+    "carrier_deaths_per_match": 0.0,
+    "matches_with_capture": 0,
+    "median_first_capture_tick": null,
+    "errors": 0
+   },
+   "meta": {
+    "spec_a": "baseline@full",
+    "spec_b": "idle",
+    "label_a": "baseline",
+    "label_b": "idle",
+    "digest_a": "8f17f9620c4328b3",
+    "digest_b": null,
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/baseline_vs_idle.jsonl"
+   }
+  },
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 5,
+   "draws": 59,
+   "losses": 0,
+   "win_rate": 0.0781,
+   "win_rate_ci": [
+    0.0156,
+    0.1406
+   ],
+   "draw_rate": 0.9219,
+   "loss_rate": 0.0,
+   "match_points": 5,
+   "match_points_per_match": 0.0781,
+   "match_points_ci": [
+    0.0156,
+    0.1406
+   ],
+   "draw_adjusted_score": 0.5391,
+   "draw_adjusted_ci": [
+    0.5078,
+    0.5703
+   ],
+   "goal_diff_mean": 0.375,
+   "goal_diff_ci": [
+    0.0781,
+    0.7656
+   ],
+   "p_goal_diff_positive": 0.9967,
+   "goals_for_mean": 0.375,
+   "goals_against_mean": 0.0,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 0,
+     "draws": 32,
+     "losses": 0,
+     "win_rate": 0.0,
+     "goal_diff_mean": 0.0
+    },
+    "blue": {
+     "n": 32,
+     "wins": 5,
+     "draws": 27,
+     "losses": 0,
+     "win_rate": 0.1562,
+     "goal_diff_mean": 0.75
+    }
+   },
+   "a": {
+    "captures_per_match": 0.375,
+    "pickups_per_match": 1.1562,
+    "conversion": 0.3243,
+    "wall_deaths_per_player_per_match": 21.3542,
+    "player_deaths_per_player_per_match": 1.5938,
+    "carrier_deaths_per_match": 0.7656,
+    "matches_with_capture": 5,
+    "median_first_capture_tick": 770.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0131,
+    "decide_max_ms": 25.6543
+   },
+   "b": {
+    "captures_per_match": 0.0,
+    "pickups_per_match": 2.125,
+    "conversion": 0.0,
+    "wall_deaths_per_player_per_match": 21.7969,
+    "player_deaths_per_player_per_match": 0.625,
+    "carrier_deaths_per_match": 2.0312,
+    "matches_with_capture": 0,
+    "median_first_capture_tick": null,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0174,
+    "decide_max_ms": 18.5852
+   },
+   "meta": {
+    "spec_a": "example@full",
+    "spec_b": "example2@full",
+    "label_a": "example",
+    "label_b": "example2",
+    "digest_a": "2549c0e4a4bdeae4",
+    "digest_b": "b9982d41fca8b63a",
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/example_vs_example2.jsonl"
+   }
+  },
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 3,
+   "draws": 61,
+   "losses": 0,
+   "win_rate": 0.0469,
+   "win_rate_ci": [
+    0.0,
+    0.0938
+   ],
+   "draw_rate": 0.9531,
+   "loss_rate": 0.0,
+   "match_points": 3,
+   "match_points_per_match": 0.0469,
+   "match_points_ci": [
+    0.0,
+    0.0938
+   ],
+   "draw_adjusted_score": 0.5234,
+   "draw_adjusted_ci": [
+    0.5,
+    0.5469
+   ],
+   "goal_diff_mean": 0.3281,
+   "goal_diff_ci": [
+    0.0,
+    0.7188
+   ],
+   "p_goal_diff_positive": 0.9598,
+   "goals_for_mean": 0.3281,
+   "goals_against_mean": 0.0,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 0,
+     "draws": 32,
+     "losses": 0,
+     "win_rate": 0.0,
+     "goal_diff_mean": 0.0
+    },
+    "blue": {
+     "n": 32,
+     "wins": 3,
+     "draws": 29,
+     "losses": 0,
+     "win_rate": 0.0938,
+     "goal_diff_mean": 0.6562
+    }
+   },
+   "a": {
+    "captures_per_match": 0.3281,
+    "pickups_per_match": 1.3438,
+    "conversion": 0.2442,
+    "wall_deaths_per_player_per_match": 20.7917,
+    "player_deaths_per_player_per_match": 0.0,
+    "carrier_deaths_per_match": 0.9688,
+    "matches_with_capture": 3,
+    "median_first_capture_tick": 561.0,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0108,
+    "decide_max_ms": 9.4236
+   },
+   "b": {
+    "captures_per_match": 0.0,
+    "pickups_per_match": 0.0,
+    "conversion": null,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 0.901,
+    "carrier_deaths_per_match": 0.0,
+    "matches_with_capture": 0,
+    "median_first_capture_tick": null,
+    "errors": 0
+   },
+   "meta": {
+    "spec_a": "example@full",
+    "spec_b": "idle",
+    "label_a": "example",
+    "label_b": "idle",
+    "digest_a": "2549c0e4a4bdeae4",
+    "digest_b": null,
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/example_vs_idle.jsonl"
+   }
+  },
+  {
+   "n_matches": 64,
+   "n_seeds": 32,
+   "wins": 0,
+   "draws": 64,
+   "losses": 0,
+   "win_rate": 0.0,
+   "win_rate_ci": [
+    0.0,
+    0.0
+   ],
+   "draw_rate": 1.0,
+   "loss_rate": 0.0,
+   "match_points": 0,
+   "match_points_per_match": 0.0,
+   "match_points_ci": [
+    0.0,
+    0.0
+   ],
+   "draw_adjusted_score": 0.5,
+   "draw_adjusted_ci": [
+    0.5,
+    0.5
+   ],
+   "goal_diff_mean": 0.0,
+   "goal_diff_ci": [
+    0.0,
+    0.0
+   ],
+   "p_goal_diff_positive": 0.0,
+   "goals_for_mean": 0.0,
+   "goals_against_mean": 0.0,
+   "per_side": {
+    "red": {
+     "n": 32,
+     "wins": 0,
+     "draws": 32,
+     "losses": 0,
+     "win_rate": 0.0,
+     "goal_diff_mean": 0.0
+    },
+    "blue": {
+     "n": 32,
+     "wins": 0,
+     "draws": 32,
+     "losses": 0,
+     "win_rate": 0.0,
+     "goal_diff_mean": 0.0
+    }
+   },
+   "a": {
+    "captures_per_match": 0.0,
+    "pickups_per_match": 2.0781,
+    "conversion": 0.0,
+    "wall_deaths_per_player_per_match": 21.75,
+    "player_deaths_per_player_per_match": 0.0,
+    "carrier_deaths_per_match": 1.9844,
+    "matches_with_capture": 0,
+    "median_first_capture_tick": null,
+    "errors": 0,
+    "decide_p99_ms_max": 0.0097,
+    "decide_max_ms": 16.5399
+   },
+   "b": {
+    "captures_per_match": 0.0,
+    "pickups_per_match": 0.0,
+    "conversion": null,
+    "wall_deaths_per_player_per_match": 0.0,
+    "player_deaths_per_player_per_match": 1.3854,
+    "carrier_deaths_per_match": 0.0,
+    "matches_with_capture": 0,
+    "median_first_capture_tick": null,
+    "errors": 0
+   },
+   "meta": {
+    "spec_a": "example2@full",
+    "spec_b": "idle",
+    "label_a": "example2",
+    "label_b": "idle",
+    "digest_a": "b9982d41fca8b63a",
+    "digest_b": null,
+    "seeds": "1000-1031",
+    "max_ticks": 6000,
+    "out": "runs/eval/baseline_rr/example2_vs_idle.jsonl"
+   }
+  }
+ ]
+}

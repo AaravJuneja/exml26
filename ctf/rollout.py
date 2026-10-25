@@ -11,7 +11,7 @@ import time
 import numpy as np
 
 from ctf import features as F
-from ctf.nets import NumpyActor
+from ctf.npnets import NumpyActor
 from ctf.policies import ScriptedTeam
 from ctf.policy_io import load_policy
 from ctf.rewards import COMPONENTS, RewardTracker

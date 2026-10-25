@@ -31,12 +31,13 @@ BUMP_RANGE = 30.0
 BUMP_CAPACITY = 96
 DANGER_SLOTS = 4
 DANGER_TICKS = 600
-HOME_CLEAR = 16.0
+HOME_CLEAR = 12.0
+RESPAWN_TICKS = 60
 
-SELF_DIM = 21
-GAME_DIM = 4
+SELF_DIM = 22
+GAME_DIM = 5
 FLAG_DIM = 22
-ENEMY_DIM = 11
+ENEMY_DIM = 14
 BUMP_DIM = 3
 DANGER_DIM = 5
 ACTION_DIM = N_THROTTLE + N_TURN + 1
@@ -70,6 +71,8 @@ class PlayerMemory:
         self.prev_self = None
         self.prev_tick = None
         self.prev_own_flag = None
+        self.side_known = False
+        self.cached = None
         self.flag_velocity = (0.0, 0.0)
         self.bumps = []
         self.deaths = {}
@@ -84,12 +87,13 @@ class PlayerMemory:
         self.prev_jump = bool(jump)
 
     # ----------------------------------------------------------------- updates
-    def _add_bump(self, x, y):
-        # The map generator keeps obstacles out of an 18-unit radius around homes,
-        # so stops there are teammate bounces, not terrain.
-        for home in (self.own_home, self.enemy_home):
-            if home is not None and (home[0] - x) ** 2 + (home[1] - y) ** 2 < HOME_CLEAR ** 2:
-                return
+    def _add_bump(self, x, y, inferred=False):
+        # Obstacles are never generated within 18 units of a home; ramps can come closer.
+        # Inferred stops right next to a home are almost always teammate bounces.
+        if inferred:
+            for home in (self.own_home, self.enemy_home):
+                if home is not None and (home[0] - x) ** 2 + (home[1] - y) ** 2 < HOME_CLEAR ** 2:
+                    return
         for bx, by in self.bumps:
             if (bx - x) ** 2 + (by - y) ** 2 < 2.25:
                 return
@@ -113,8 +117,10 @@ class PlayerMemory:
                 break
         if self.own_home is not None:
             self.side = -1.0 if self.own_home[0] > 0 else 1.0
+            self.side_known = True
         elif self.enemy_home is not None:
             self.side = 1.0 if self.enemy_home[0] > 0 else -1.0
+            self.side_known = True
         elif self.side is None:
             self.side = -1.0 if x > 0 else 1.0
 
@@ -124,21 +130,27 @@ class PlayerMemory:
         prev_speed = speed
         if prev is not None and gap == 1:
             prev_speed = _num(prev.get("speed"))
-            if (prev_speed > 0.5 and speed < 1e-9
-                    and abs(x) < ARENA_LIMIT - 0.5 and abs(y) < ARENA_LIMIT - 0.5):
-                pvx, pvy = _num(prev.get("vx")), _num(prev.get("vy"))
-                norm = math.hypot(pvx, pvy) or 1.0
-                self._add_bump(x + pvx / norm, y + pvy / norm)
+            pushed = abs(THROTTLE_VALUES[self.prev_throttle]) >= 0.1
+            if ((prev_speed > 0.5 or pushed) and speed < 1e-9
+                    and abs(x) < ARENA_LIMIT - 1.5 and abs(y) < ARENA_LIMIT - 1.5):
+                if prev_speed > 0.5:
+                    dx, dy = _num(prev.get("vx")), _num(prev.get("vy"))
+                else:
+                    sign = 1.0 if THROTTLE_VALUES[self.prev_throttle] > 0 else -1.0
+                    yaw = _num(me.get("yaw"))
+                    dx, dy = sign * math.sin(yaw), sign * math.cos(yaw)
+                norm = math.hypot(dx, dy) or 1.0
+                self._add_bump(x + dx / norm, y + dy / norm, inferred=True)
 
-        if own_flag.get("carried_by", -1) != -1 and self.prev_own_flag is not None and gap >= 1:
-            px, py, pcarried = self.prev_own_flag
-            if pcarried:
-                fx, fy = _num(own_flag.get("x")), _num(own_flag.get("y"))
-                self.flag_velocity = ((fx - px) / (0.05 * gap), (fy - py) / (0.05 * gap))
+        carrier = own_flag.get("carried_by", -1)
+        fx, fy = _num(own_flag.get("x")), _num(own_flag.get("y"))
+        if (carrier != -1 and self.prev_own_flag is not None and 1 <= gap <= 3
+                and self.prev_own_flag[2] == carrier):
+            px, py = self.prev_own_flag[0], self.prev_own_flag[1]
+            self.flag_velocity = ((fx - px) / (0.05 * gap), (fy - py) / (0.05 * gap))
         else:
             self.flag_velocity = (0.0, 0.0)
-        self.prev_own_flag = (_num(own_flag.get("x")), _num(own_flag.get("y")),
-                              own_flag.get("carried_by", -1) != -1)
+        self.prev_own_flag = (fx, fy, carrier)
 
         for message in observation.get("death_messages") or ():
             key = (message.get("player"), message.get("tick"))
@@ -157,7 +169,8 @@ class PlayerMemory:
             self.enemies[enemy.get("id")] = (
                 tick, _num(enemy.get("x")), _num(enemy.get("y")), _num(enemy.get("z")),
                 _num(enemy.get("vx")), _num(enemy.get("vy")), _num(enemy.get("speed")),
-                1.0 if enemy.get("carrying") else 0.0,
+                1.0 if enemy.get("carrying") else 0.0, _num(enemy.get("yaw")),
+                1.0 if enemy.get("grounded") else 0.0,
             )
         for key in [k for k, v in self.enemies.items() if tick - v[0] > ENEMY_MEMORY_TICKS]:
             del self.enemies[key]
@@ -169,7 +182,13 @@ class PlayerMemory:
 
 
 def encode(observation, memory):
-    """Update `memory` with `observation` and return the feature list."""
+    """Update `memory` with `observation` and return the feature list.
+
+    Encoding the same tick twice returns the cached features unchanged.
+    """
+    tick = int(_num(observation.get("tick"), 0))
+    if memory.cached is not None and memory.last_tick == tick:
+        return list(memory.cached)
     gap, prev_speed = memory.update(observation)
     me = observation.get("self") or {}
     tick = int(_num(observation.get("tick"), 0))
@@ -197,14 +216,17 @@ def encode(observation, memory):
             _clip((ARENA_LIMIT - cy) / 20.0, 0.0, 1.0), _clip((ARENA_LIMIT + cy) / 20.0, 0.0, 1.0)]
     player = int(_num(me.get("player"), 1))
     out += [1.0 if player == 1 else 0.0, 1.0 if player == 2 else 0.0, 1.0 if player == 3 else 0.0]
-    out += [_clip(gap / 60.0, 0.0, 2.0), _clip((speed - prev_speed) / 18.0, -1.0, 1.0)]
+    out += [_clip(gap / 60.0, 0.0, 2.0), _clip((speed - prev_speed) / 18.0, -1.0, 1.0),
+            1.0 if memory.side_known else 0.0]
 
     score = observation.get("score") or {}
     team = me.get("team")
     mine = _num(score.get(team))
     theirs = sum(_num(v) for k, v in score.items() if k != team)
+    dead_mates = sum(1 for d_key, d in memory.deaths.items()
+                     if d_key[0] != player and 0 <= tick - d[2] <= RESPAWN_TICKS)
     out += [tick / 6000.0, _clip((mine - theirs) / 5.0, -2.0, 2.0),
-            _clip(mine / 10.0, 0.0, 3.0), _clip(theirs / 10.0, 0.0, 3.0)]
+            _clip(mine / 10.0, 0.0, 3.0), _clip(theirs / 10.0, 0.0, 3.0), dead_mates / 2.0]
 
     my_id = me.get("id")
     own_flag = observation.get("own_flag") or {}
@@ -239,18 +261,20 @@ def encode(observation, memory):
 
     enemies = []
     for record in memory.enemies.values():
-        etick, ex, ey, ez, evx, evy, espeed, ecarry = record
+        etick, ex, ey, ez, evx, evy, espeed, ecarry, eyaw, egrounded = record
         dx, dy = ex - x, ey - y
-        enemies.append((tick - etick, dx * dx + dy * dy, dx, dy, ez, evx, evy, espeed, ecarry))
+        enemies.append((tick - etick, dx * dx + dy * dy, dx, dy, ez, evx, evy, espeed, ecarry,
+                        eyaw, egrounded))
     enemies.sort(key=lambda e: (e[0] > 0, e[1]))
     for i in range(ENEMY_SLOTS):
         if i < len(enemies):
-            age, dist2, dx, dy, ez, evx, evy, espeed, ecarry = enemies[i]
+            age, dist2, dx, dy, ez, evx, evy, espeed, ecarry, eyaw, egrounded = enemies[i]
             ef, er = body(dx, dy)
             rvf, rvr = body(evx - vx, evy - vy)
             out += [1.0, age / ENEMY_MEMORY_TICKS, ef / 40.0, er / 40.0,
                     _clip(math.sqrt(dist2) / 40.0, 0.0, 2.0), rvf / 18.0, rvr / 18.0,
-                    espeed / 18.0, (speed - espeed) / 18.0, ecarry, ez - z]
+                    espeed / 18.0, (speed - espeed) / 18.0, ecarry, _clip(ez - z, -3.0, 3.0),
+                    math.sin(eyaw - yaw), math.cos(eyaw - yaw), egrounded]
         else:
             out += [0.0] * ENEMY_DIM
 
@@ -286,4 +310,5 @@ def encode(observation, memory):
     action[N_THROTTLE + memory.prev_turn] = 1.0
     action[-1] = 1.0 if memory.prev_jump else 0.0
     out += action
-    return out
+    memory.cached = out
+    return list(out)

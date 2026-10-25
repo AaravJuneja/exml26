@@ -1,22 +1,33 @@
 """Per-tick training rewards for the learning team.
 
-Every term is computable from documented observation content (score, the
-player's own position/carrying state, flag records and death messages). The
-simulator objects are read only because they hold exactly those values.
+Every term is computable from documented information: the score, the player's
+own state (dead players use their spawn point, the first position they ever
+observed), flag records with carrier ids, observed flag homes, and death
+messages. Simulator objects are read only because they hold exactly those values.
+
+Shaping is potential-based, F = gamma * Phi(after) - Phi(before), applied every
+tick including death and respawn, so loops that do not score earn nothing in
+expectation. The potential is the remaining route length for the player:
+  * carrying the enemy flag: distance to own home;
+  * a teammate carries it: the carrier's distance to own home (team progress);
+  * otherwise: distance to the enemy flag plus that flag's distance to own home.
+The shaping term is skipped on the tick our team scores (the route resets).
 """
 
 import math
 
-COMPONENTS = ("score", "pickup", "death", "carrier_death", "flag_return", "progress")
+COMPONENTS = ("score", "win", "pickup", "death", "carrier_death", "flag_return", "shaping")
 
 DEFAULT_WEIGHTS = {
     "score": 1.0,          # per point, own minus enemy, to every learner
-    "pickup": 0.2,         # this player starts carrying the enemy flag
+    "win": 1.0,            # terminal, to every learner, only for a win
+    "pickup": 0.1,         # this player starts carrying the enemy flag
     "wall_death": 0.3,     # penalty
     "player_death": 0.1,   # penalty
     "carrier_death": 0.25, # extra penalty for dying while carrying
-    "flag_return": 0.2,    # enemy carrier of our flag eliminated (team)
-    "progress": 0.5,       # scale of objective-distance progress (per 180 units)
+    "flag_return": 0.2,    # the enemy carrier of our flag is eliminated (team)
+    "shaping": 0.5,        # potential scale: Phi = -shaping * route_length / 180
+    "gamma": 0.998,        # must equal the trainer's discount for exact PBRS
 }
 
 
@@ -25,60 +36,76 @@ class RewardTracker:
         self.match = match
         self.team = team
         self.enemy = next(name for name in match.team_names if name != team)
-        self.weights = dict(weights)
+        self.weights = dict(DEFAULT_WEIGHTS, **weights)
         self.spheres = sorted((s for s in match.spheres if s.team == team), key=lambda s: s.player)
         self.own_flag = next(f for f in match.flags if f.team == team)
         self.enemy_flag = next(f for f in match.flags if f.team == self.enemy)
-        self._deaths_seen = len(match.death_log())
+        self.home = (self.own_flag.home_x, self.own_flag.home_y)
+        self.spawns = [(s.start_x, s.start_y) for s in self.spheres]
+        self._seen_deaths = set()
         self.totals = {name: 0.0 for name in COMPONENTS}
         self.counts = {"pickups": 0, "wall_deaths": 0, "player_deaths": 0,
                        "carrier_deaths": 0, "flag_returns": 0}
 
-    def _objective_distance(self, sphere):
-        if sphere.carrying_flag is not None:
-            hx, hy = self.own_flag.home_x, self.own_flag.home_y
-            return math.hypot(sphere.x - hx, sphere.y - hy)
-        carrier = self.enemy_flag.carrier
-        if carrier is not None and carrier.team == self.team:
-            return None
-        return math.hypot(sphere.x - self.enemy_flag.x, sphere.y - self.enemy_flag.y)
+    def _potentials(self):
+        hx, hy = self.home
+        flag = self.enemy_flag
+        carrier = flag.carrier
+        scale = -self.weights["shaping"] / 180.0
+        out = []
+        for k, sphere in enumerate(self.spheres):
+            x, y = (sphere.x, sphere.y) if sphere.alive else self.spawns[k]
+            if carrier is not None and carrier.team == self.team:
+                if carrier is sphere:
+                    route = math.hypot(x - hx, y - hy)
+                else:
+                    route = math.hypot(carrier.x - hx, carrier.y - hy)
+            else:
+                route = math.hypot(x - flag.x, y - flag.y) + math.hypot(flag.x - hx, flag.y - hy)
+            out.append(scale * route)
+        return out
 
     def before(self):
         """Snapshot taken after observe() and before act()."""
         m = self.match
         self._score = (m.score[self.team], m.score[self.enemy])
-        self._own_flag_carrier = self.own_flag.carrier
-        self._state = [
-            (s.alive, s.carrying_flag is not None, self._objective_distance(s) if s.alive else None)
-            for s in self.spheres
-        ]
+        self._own_carrier = self.own_flag.carrier.id if self.own_flag.carrier else None
+        self._state = [(s.alive, s.carrying_flag is not None) for s in self.spheres]
+        self._phi = self._potentials()
+
+    def _new_deaths(self):
+        """Own-team deaths logged during the last act() (death log entries carry the tick)."""
+        tick = self.match.tick - 1
+        found = {}
+        for message in reversed(self.match.death_log()):
+            if message["tick"] < tick:
+                break
+            key = (message["team"], message["player"], message["tick"])
+            if message["team"] == self.team and key not in self._seen_deaths:
+                self._seen_deaths.add(key)
+                found[message["player"]] = message["reason"]
+        return found
 
     def after(self):
         """Rewards for the transition just simulated, one value per learner slot."""
         w = self.weights
         m = self.match
         own, enemy = m.score[self.team], m.score[self.enemy]
-        score = w["score"] * ((own - self._score[0]) - (enemy - self._score[1]))
+        scored = own - self._score[0]
+        score = w["score"] * (scored - (enemy - self._score[1]))
         rewards = [score] * len(self.spheres)
         self.totals["score"] += score * len(self.spheres)
 
-        if (self._own_flag_carrier is not None and self.own_flag.carrier is None
+        own_carrier = self.own_flag.carrier.id if self.own_flag.carrier else None
+        if (self._own_carrier is not None and own_carrier != self._own_carrier
                 and enemy == self._score[1]):
-            bonus = w["flag_return"]
-            rewards = [r + bonus for r in rewards]
-            self.totals["flag_return"] += bonus * len(self.spheres)
+            rewards = [r + w["flag_return"] for r in rewards]
+            self.totals["flag_return"] += w["flag_return"] * len(self.spheres)
             self.counts["flag_returns"] += 1
 
-        log = m.death_log()
-        new_deaths = log[self._deaths_seen:] if len(log) >= self._deaths_seen else log
-        self._deaths_seen = len(log)
-        died = {}
-        for message in new_deaths:
-            if message["team"] == self.team:
-                died[message["player"]] = message["reason"]
-
+        died = self._new_deaths()
         for k, sphere in enumerate(self.spheres):
-            was_alive, was_carrying, distance = self._state[k]
+            was_alive, was_carrying = self._state[k]
             if not was_alive:
                 continue
             reason = died.get(sphere.player)
@@ -91,16 +118,20 @@ class RewardTracker:
                     rewards[k] -= w["carrier_death"]
                     self.totals["carrier_death"] -= w["carrier_death"]
                     self.counts["carrier_deaths"] += 1
-                continue
-            carrying = sphere.carrying_flag is not None
-            if carrying and not was_carrying:
+            elif sphere.carrying_flag is not None and not was_carrying:
                 rewards[k] += w["pickup"]
                 self.totals["pickup"] += w["pickup"]
                 self.counts["pickups"] += 1
-            if distance is not None and carrying == was_carrying:
-                new_distance = self._objective_distance(sphere)
-                if new_distance is not None:
-                    progress = w["progress"] * (distance - new_distance) / 180.0
-                    rewards[k] += progress
-                    self.totals["progress"] += progress
+
+        if not scored:
+            phi = self._potentials()
+            gamma = w["gamma"]
+            for k in range(len(self.spheres)):
+                shaping = gamma * phi[k] - self._phi[k]
+                rewards[k] += shaping
+                self.totals["shaping"] += shaping
+
+        if m.tick >= m.max_ticks and own > enemy:
+            rewards = [r + w["win"] for r in rewards]
+            self.totals["win"] += w["win"] * len(self.spheres)
         return rewards
