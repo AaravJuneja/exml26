@@ -27,7 +27,8 @@ Working log. The summary is `docs/tracker.html`.
 | Replay viewer | in progress | `tools/replay.py` and `docs/viewer.html` |
 | `opponents/*` | in progress | rusher, guardian, camper, relay, balanced |
 | Phase 1 review | done | Critical: death-log cap (200) broke death penalties; progress shaping could be farmed by dying. Both fixed: deaths deduplicated by key; potential-based route shaping applied across deaths. Major fixes: wall deaths never home-filtered; bump inferred from pushing at rest; flag velocity keyed to the carrier; numpy-only `npnets`; idempotent encode |
-| Phase 2 review plus round 2 | in progress | trainer, rollout, export, evaluate, latency |
+| Phase 2 review plus round 2 | done | Critical: teammate carrier position leaked through rewards (the engine assigns the carrier before flag coordinates refresh); now uses public flag coordinates. Major fixes: PopArt critic rescaling; exact PBRS on every tick with terminal Φ=0 (tested by an exact discounted-telescoping identity); observation stats frozen after 20 updates; worker health/timeouts/error propagation; flag-velocity baseline after a carrier change; latency verdict fails on load or model errors; KL check before the step; RNG state in checkpoints |
+| Engine ramp fix | done | Per-ramp `height_at` check. `engine/` is byte-identical to `game-env`; also applied to the planning workspaces. m2b/m2c were restarted on the fixed physics |
 
 ## Measurements
 - **Training machine physics:** 92k ticks/s across 8 processes with the broad phase (bit-identical).
@@ -38,7 +39,15 @@ Working log. The summary is `docs/tracker.html`.
 |---|---|---|
 | probe1 | 2 updates, idle | Throughput probe only |
 | m2a | PPO from scratch vs idle (old rewards) | Stopped at ~16M samples because of the reward bugs; had reached 0.3 goals per match |
-| m2b | Same as m2a but with fixed potential-based rewards, win bonus 1.0, shaping annealing over 300M samples | running |
+| m2b, m2c | Fixed rewards; old physics (m2b) or pre-round-2 code (m2c) | Stopped and superseded |
+| m2d | Round-2 fixes, exact PBRS, PopArt, frozen normalisation; vs idle | running |
+
+## Backlog from the reviews
+- Long-horizon win objective: a separate undiscounted win-value head (γ=1, terminal win indicator), with its advantage added to the PPO advantage at weight β.
+- Evaluation `compare`: validate opponent, digest, horizon and full side pairs.
+- Policy caches: key them by file digest.
+- Export: test inherited thread environment variables, sampled-RNG parity, and promote the exported artifact itself.
+- Features: confidence/expiry for inferred contacts; teammate-stop false terrain.
 
 ## Next
 1. Read the Phase 1 review and fix its findings.
