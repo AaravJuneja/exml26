@@ -4,3 +4,7 @@ __pycache__/
 data/telemetry/*.jsonl
 .DS_Store
 *.uidbench/.policies/
+runs/
+data/
+__pycache__/
+.pytest_cache/
