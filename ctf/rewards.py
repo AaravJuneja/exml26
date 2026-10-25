@@ -5,13 +5,16 @@ own state (dead players use their spawn point, the first position they ever
 observed), flag records with carrier ids, observed flag homes, and death
 messages. Simulator objects are read only because they hold exactly those values.
 
-Shaping is potential-based, F = gamma * Phi(after) - Phi(before), applied every
-tick including death and respawn, so loops that do not score earn nothing in
-expectation. The potential is the remaining route length for the player:
+Shaping is exactly potential-based, F = gamma * Phi(after) - Phi(before), applied
+on every tick (deaths, respawns and captures included) with Phi = 0 at the end of
+the match, so it cannot change which policy is optimal; it only densifies credit.
+The potential is minus the remaining route length for the player:
   * carrying the enemy flag: distance to own home;
-  * a teammate carries it: the carrier's distance to own home (team progress);
+  * a teammate carries it: the public flag position's distance to own home;
   * otherwise: distance to the enemy flag plus that flag's distance to own home.
-The shaping term is skipped on the tick our team scores (the route resets).
+Positions come only from documented fields: own position, public flag
+coordinates (which lag a fresh carrier by one tick, exactly as observed), the
+observed home and the player's own spawn point.
 """
 
 import math
@@ -59,7 +62,7 @@ class RewardTracker:
                 if carrier is sphere:
                     route = math.hypot(x - hx, y - hy)
                 else:
-                    route = math.hypot(carrier.x - hx, carrier.y - hy)
+                    route = math.hypot(flag.x - hx, flag.y - hy)
             else:
                 route = math.hypot(x - flag.x, y - flag.y) + math.hypot(flag.x - hx, flag.y - hy)
             out.append(scale * route)
@@ -123,15 +126,15 @@ class RewardTracker:
                 self.totals["pickup"] += w["pickup"]
                 self.counts["pickups"] += 1
 
-        if not scored:
-            phi = self._potentials()
-            gamma = w["gamma"]
-            for k in range(len(self.spheres)):
-                shaping = gamma * phi[k] - self._phi[k]
-                rewards[k] += shaping
-                self.totals["shaping"] += shaping
+        terminal = m.tick >= m.max_ticks
+        phi = [0.0] * len(self.spheres) if terminal else self._potentials()
+        gamma = w["gamma"]
+        for k in range(len(self.spheres)):
+            shaping = gamma * phi[k] - self._phi[k]
+            rewards[k] += shaping
+            self.totals["shaping"] += shaping
 
-        if m.tick >= m.max_ticks and own > enemy:
+        if terminal and own > enemy:
             rewards = [r + w["win"] for r in rewards]
             self.totals["win"] += w["win"] * len(self.spheres)
         return rewards

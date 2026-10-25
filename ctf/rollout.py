@@ -166,13 +166,23 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0):
 def worker_main(conn, worker_id):
     """Process loop: receive (weights, mean, std, jobs, config), send collected data."""
     import os
+    import traceback
     os.environ.setdefault("OMP_NUM_THREADS", "1")
     while True:
-        message = conn.recv()
+        try:
+            message = conn.recv()
+        except EOFError:
+            break
         if message is None:
             break
-        weights, mean, std, jobs, config = message
-        actor = NumpyActor(weights, mean, std)
-        data = collect(actor, jobs, config["reward_weights"], config["max_ticks"],
-                       config["seed"], config.get("memory_wipe_prob", 0.0))
-        conn.send(data)
+        try:
+            weights, mean, std, jobs, config = message
+            actor = NumpyActor(weights, mean, std)
+            data = collect(actor, jobs, config["reward_weights"], config["max_ticks"],
+                           config["seed"], config.get("memory_wipe_prob", 0.0))
+        except Exception:
+            data = {"error": traceback.format_exc()}
+        try:
+            conn.send(data)
+        except (BrokenPipeError, OSError):
+            break

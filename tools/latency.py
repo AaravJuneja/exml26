@@ -196,6 +196,8 @@ def _run_games(teams_path, matches, ticks, seed, err_path):
         "harness_exceptions": rec["exceptions"],
         "idle_results": rec["idle"],
         "decide_errors_reported": decide_errors,
+        "load_failures": err_text.count("worker: failed to load"),
+        "tracebacks": err_text.count("Traceback"),
         "worker_stderr_tail": err_text[-400:] if err_text.strip() else "",
         "ready_s": {"max": round(max(rec["ready_s"]), 3) if rec["ready_s"] else None,
                     "mean": round(sum(rec["ready_s"]) / len(rec["ready_s"]), 3)
@@ -291,9 +293,14 @@ def _measure(args, tmp):
         "callback_p99_le_10ms": callback.get("p99_ms", 1e9) <= 10.0,
         "callback_max_le_20ms": callback.get("max_ms", 1e9) <= 20.0,
         "zero_timeouts": summary["engine"]["timeouts_or_respawns"] == 0,
+        "model_loaded": summary["engine"]["load_failures"] == 0,
+        "zero_model_errors": (summary["engine"]["decide_errors_reported"] == 0
+                              and summary["engine"]["tracebacks"] == 0
+                              and summary["engine"]["harness_exceptions"] == 0),
     }
     if "inprocess" in summary:
         summary["verdict"]["decide_p99_le_3ms"] = summary["inprocess"]["decide"]["p99_ms"] <= 3.0
+    summary["verdict"]["all_pass"] = all(summary["verdict"].values())
     print(json.dumps(summary, indent=2))
 
 

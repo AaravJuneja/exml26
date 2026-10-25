@@ -71,6 +71,7 @@ class PlayerMemory:
         self.prev_self = None
         self.prev_tick = None
         self.prev_own_flag = None
+        self.flag_streak = 0
         self.side_known = False
         self.cached = None
         self.flag_velocity = (0.0, 0.0)
@@ -130,7 +131,7 @@ class PlayerMemory:
         prev_speed = speed
         if prev is not None and gap == 1:
             prev_speed = _num(prev.get("speed"))
-            pushed = abs(THROTTLE_VALUES[self.prev_throttle]) >= 0.1
+            pushed = abs(THROTTLE_VALUES[self.prev_throttle]) * 6.0 > 0.05
             if ((prev_speed > 0.5 or pushed) and speed < 1e-9
                     and abs(x) < ARENA_LIMIT - 1.5 and abs(y) < ARENA_LIMIT - 1.5):
                 if prev_speed > 0.5:
@@ -144,8 +145,12 @@ class PlayerMemory:
 
         carrier = own_flag.get("carried_by", -1)
         fx, fy = _num(own_flag.get("x")), _num(own_flag.get("y"))
-        if (carrier != -1 and self.prev_own_flag is not None and 1 <= gap <= 3
-                and self.prev_own_flag[2] == carrier):
+        same = (self.prev_own_flag is not None and self.prev_own_flag[2] == carrier
+                and 1 <= gap <= 3)
+        self.flag_streak = self.flag_streak + 1 if same else 1
+        # Public flag coordinates lag a new carrier by one tick, so the first
+        # displacement after a carrier change is a catch-up jump, not motion.
+        if carrier != -1 and self.flag_streak >= 3:
             px, py = self.prev_own_flag[0], self.prev_own_flag[1]
             self.flag_velocity = ((fx - px) / (0.05 * gap), (fy - py) / (0.05 * gap))
         else:

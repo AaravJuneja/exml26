@@ -94,6 +94,7 @@ class Trainer:
             "optimizer": self.optimizer.state_dict(), "norm": self.norm.state(),
             "ret_norm": self.ret_norm.state(), "update": self.update, "samples": self.samples,
             "opp_winrate": self.opp_winrate,
+            "np_rng": self.rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
             "args": vars(self.args),
         }
 
@@ -112,6 +113,9 @@ class Trainer:
             self.optimizer.load_state_dict(state["optimizer"])
             self.update, self.samples = state["update"], state["samples"]
             self.opp_winrate = state.get("opp_winrate", {})
+            if "np_rng" in state:
+                self.rng.bit_generator.state = state["np_rng"]
+                torch.set_rng_state(state["torch_rng"])
 
     def export_policy(self, path):
         save_policy(path, actor_to_numpy(self.actor), self.norm.mean, self.norm.std,
@@ -174,6 +178,14 @@ class Trainer:
             self.opp_winrate[key] = 0.9 * old + 0.1 * value
 
     # --------------------------------------------------------------- update
+    def popart_rescale(self, old_mean, old_std):
+        """Rescale the critic's output layer so raw value predictions are unchanged."""
+        new_mean, new_std = float(self.ret_norm.mean[0]), float(self.ret_norm.std[0])
+        last = self.critic.net[-1]
+        with torch.no_grad():
+            last.weight.mul_(old_std / new_std)
+            last.bias.mul_(old_std).add_(old_mean - new_mean).div_(new_std)
+
     def ppo_update(self, batch):
         args = self.args
         T, E = batch["rewards"].shape[:2]
@@ -195,7 +207,9 @@ class Trainer:
         returns = (adv + values).reshape(-1)[flat_index]
         adv = adv.reshape(-1)[flat_index]
         explained = 1.0 - np.var(returns - v_raw) / (np.var(returns) + 1e-8)
+        old_mean, old_std = float(self.ret_norm.mean[0]), float(self.ret_norm.std[0])
         self.ret_norm.update(returns.reshape(-1, 1))
+        self.popart_rescale(old_mean, old_std)
         ret_t = torch.as_tensor((returns - self.ret_norm.mean[0]) / self.ret_norm.std[0],
                                 dtype=torch.float32, device=self.device)
         adv_t = torch.as_tensor((adv - adv.mean()) / (adv.std() + 1e-8),
@@ -215,6 +229,11 @@ class Trainer:
                 logits = self.actor(x_all[idx])
                 logp, entropy = log_prob_entropy(logits, act_t[idx])
                 ratio = torch.exp(logp - old_logp[idx])
+                with torch.no_grad():
+                    kl = ((ratio - 1) - (logp - old_logp[idx])).mean().item()
+                if args.target_kl and kl > 1.5 * args.target_kl:
+                    stop = True
+                    break
                 surrogate = torch.min(ratio * adv_t[idx],
                                       torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv_t[idx])
                 pi_loss = -surrogate.mean()
@@ -225,21 +244,16 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(
                     list(self.actor.parameters()) + list(self.critic.parameters()), args.max_grad)
                 self.optimizer.step()
-                with torch.no_grad():
-                    log_ratio = logp - old_logp[idx]
-                    kl = ((ratio - 1) - log_ratio).mean().item()
                 stats["pi_loss"].append(pi_loss.item())
                 stats["v_loss"].append(v_loss.item())
                 stats["entropy"].append(entropy.mean().item())
                 stats["kl"].append(kl)
                 stats["clipfrac"].append(((ratio - 1).abs() > args.clip).float().mean().item())
-                if args.target_kl and kl > 1.5 * args.target_kl:
-                    stop = True
-                    break
             if stop:
                 break
-        self.norm.update(raw.reshape(T * E * 3, -1)[flat_index][:: args.norm_stride])
-        out = {k: float(np.mean(v)) for k, v in stats.items()}
+        if self.update < args.norm_updates:
+            self.norm.update(raw.reshape(T * E * 3, -1)[flat_index][:: args.norm_stride])
+        out = {k: float(np.mean(v)) if v else 0.0 for k, v in stats.items()}
         out.update({"explained_var": float(explained), "samples": int(n),
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
                     "adv_raw_std": float(adv.std())})
@@ -254,6 +268,7 @@ class Trainer:
             parent, child = ctx.Pipe()
             proc = ctx.Process(target=worker_main, args=(child, i), daemon=True)
             proc.start()
+            child.close()
             pipes.append(parent)
             procs.append(proc)
         log_path = self.run_dir / "log.jsonl"
@@ -267,7 +282,7 @@ class Trainer:
                 for pipe in pipes:
                     config = dict(config, seed=int(self.rng.integers(2**31)))
                     pipe.send((weights, mean, std, self.jobs(args.envs), config))
-                results = [pipe.recv() for pipe in pipes]
+                results = [self.receive(pipe, proc) for pipe, proc in zip(pipes, procs)]
                 t1 = time.perf_counter()
                 batch = {key: np.concatenate([r[key] for r in results], axis=1)
                          for key in ("obs", "actions", "logp", "rewards", "alive")}
@@ -297,6 +312,21 @@ class Trainer:
                     pass
             for proc in procs:
                 proc.join(timeout=5)
+                if proc.is_alive():
+                    proc.terminate()
+
+    def receive(self, pipe, proc):
+        """Wait for a worker's rollout; fail loudly if it died or reported an error."""
+        deadline = time.monotonic() + self.args.worker_timeout
+        while not pipe.poll(5.0):
+            if not proc.is_alive():
+                raise RuntimeError(f"rollout worker {proc.pid} died (exit {proc.exitcode})")
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"rollout worker {proc.pid} timed out")
+        result = pipe.recv()
+        if isinstance(result, dict) and "error" in result:
+            raise RuntimeError(f"rollout worker failed:\n{result['error']}")
+        return result
 
     def summarize(self, stats, learn, rollout_s, update_s, ticks):
         n = len(stats)
@@ -359,9 +389,12 @@ def main(argv=None):
     p.add_argument("--reward-weights", default="{}")
     p.add_argument("--memory-wipe", type=float, default=0.02)
     p.add_argument("--norm-stride", type=int, default=7)
+    p.add_argument("--norm-updates", type=int, default=20,
+                   help="observation statistics are frozen after this many updates")
     p.add_argument("--save-every", type=int, default=5)
     p.add_argument("--snapshot-every", type=int, default=10)
     p.add_argument("--learner-threads", type=int, default=8)
+    p.add_argument("--worker-timeout", type=float, default=1800.0)
     p.add_argument("--device", default="cpu")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--init", default="")

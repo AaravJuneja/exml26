@@ -33,13 +33,28 @@ def test_deaths_counted_past_engine_log_cap():
     assert counted == true_deaths > 20
 
 
-def test_shaping_telescopes_without_scoring():
-    """With no score events, total shaping is gamma-telescoping of the potential: bounded."""
-    weights = {"gamma": 1.0}
-    match, tracker, _, _ = _run(5, 2000, weights)
-    if match.score["red"] == 0:
-        # Phi(end) - Phi(start) for three players is at most 3 * 0.5 * (route length/180) ~ 3
-        assert abs(tracker.totals["shaping"]) < 3 * DEFAULT_WEIGHTS["shaping"] * 2.5
+def test_shaping_is_exact_discounted_telescoping():
+    """sum_t gamma^t F_t == gamma^T * 0 - Phi(s_0) for every player, through deaths and captures."""
+    gamma = 0.99
+    match = Match(5, max_ticks=1500)
+    tracker = RewardTracker(match, "red", {"gamma": gamma, "score": 0.0, "win": 0.0, "pickup": 0.0,
+                                           "wall_death": 0.0, "player_death": 0.0,
+                                           "carrier_death": 0.0, "flag_return": 0.0})
+    decide = {s.id: load_decide(WIGGLE) for s in match.spheres}
+    discounted = [0.0, 0.0, 0.0]
+    phi0 = None
+    t = 0
+    while not match.is_over():
+        observations = match.observe()
+        tracker.before()
+        if phi0 is None:
+            phi0 = list(tracker._phi)
+        match.act({sid: decide[sid](o) for sid, o in observations.items()})
+        for k, r in enumerate(tracker.after()):
+            discounted[k] += gamma ** t * r
+        t += 1
+    for k in range(3):
+        assert abs(discounted[k] + phi0[k]) < 1e-9
 
 
 def test_pickup_does_not_jump_potential():

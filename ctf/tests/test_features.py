@@ -94,8 +94,11 @@ def test_flag_velocity_resets_on_carrier_change():
              memory)
     F.encode(dict(base, tick=2, own_flag={"x": -59.0, "y": 0.0, "carried_by": 0, "at_home": False}),
              memory)
+    assert memory.flag_velocity == (0.0, 0.0)  # first displacement after pickup is catch-up
+    F.encode(dict(base, tick=3, own_flag={"x": -58.0, "y": 0.0, "carried_by": 0, "at_home": False}),
+             memory)
     assert abs(memory.flag_velocity[0] - 20.0) < 1e-9
-    F.encode(dict(base, tick=3, own_flag={"x": -89.0, "y": 0.0, "carried_by": 1, "at_home": False}),
+    F.encode(dict(base, tick=4, own_flag={"x": -89.0, "y": 0.0, "carried_by": 1, "at_home": False}),
              memory)
     assert memory.flag_velocity == (0.0, 0.0)
 
