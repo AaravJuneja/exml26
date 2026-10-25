@@ -1,0 +1,50 @@
+# Detailed work tracker
+
+Working log. The summary is `docs/tracker.html`.
+
+## Ground rules
+- **Submission:** real ML. The network chooses actions. Engineered inputs and preprocessing are fine, and hybrid designs are fine if they win. The goal is the best possible tournament result.
+- **Points:** a draw gives 0 points, so we optimise **wins**.
+- **numpy:** confirmed available in the tournament. Python version is not a concern; 3.14 is used everywhere.
+- **30 ms limit:** wall-clock time from the parent's send to the reply becoming readable (`rpc/worker.py` `conn.poll(0.03)`). The 6 workers run concurrently. Targets: warm `decide` p99 ≤ 3 ms; loaded 6-worker callback p99 ≤ 10 ms, max ≤ 20 ms.
+- **Workflow:**
+  - push to `main` at milestones;
+  - update `tracker.html` at milestones and every ~3 h;
+  - each phase is reviewed, with capped review rounds.
+
+## Infrastructure
+| Item | Status | Notes |
+|---|---|---|
+| `ctf/sim.py` | done | Exact `Game` replica with observe/act split, plus an exact broad phase (obstacles, ramps, ground, line of sight). 6 parity tests against the real `Game`, with recorded observations bit-identical |
+| `ctf/features.py` | done | 158 features: self 21, game 4, flags 22, enemies 3×11, bumps 12×3, danger 4×5, previous action 22. Pure Python, about 9 µs per encode |
+| `ctf/nets.py`, `ctf/policy_io.py` | done | tanh MLP actor 158→128→128→(12+9+2); critic 256×256; numpy actor; `.npz` policy format |
+| `ctf/rewards.py` | done | score ±1, pickup 0.2, wall death −0.3, player death −0.1, carrier death −0.25, flag return +0.2, progress 0.5 per 180 units (annealed) |
+| `ctf/rollout.py`, `ctf/train.py` | done | Full-match lockstep workers; GAE across respawn gaps (tested against a reference); PPO with KL early stop, value normalisation, observation normalisation; checkpoint and resume |
+| `ctf/export.py` + latency tool | in progress | Single-file `model.py` |
+| `ctf/evaluate.py` | in progress | Paired-seed bootstrap gauntlet |
+| `opponents/*` | in progress | rusher, guardian, camper, relay, balanced |
+| Phase 1 review | in progress | sim, features, nets, rewards |
+
+## Measurements
+- **Training machine physics:** 92k ticks/s across 8 processes with the broad phase (bit-identical).
+- **Training throughput** (idle opponents, 10 workers × 3 matches): about 517k samples per update; rollout 3.2 s plus update 4.4 s; about **240M learner samples per hour**.
+
+## Runs
+| Run | Config | Status / result |
+|---|---|---|
+| probe1 | 2 updates, idle | Throughput probe only |
+| m2a | PPO from scratch vs idle; progress shaping 0.5 annealing to 0.1 over 150M samples; 600 updates | running |
+
+## Next
+1. Read the Phase 1 review and fix its findings.
+2. M2 gate: at least 8 captures per match against idle on held-out seeds, and at most 2 wall deaths per player.
+3. Integrate the exporter and evaluation harness, then commit.
+4. Opponent-mix training (M3); self-play league (M4).
+5. Ideas backlog:
+   - GRU variant
+   - learned sonar
+   - critic that sees the whole team
+   - larger network if the latency budget allows
+   - stochastic vs greedy decoding at evaluation
+   - reward for a win bonus
+   - PBT over hyperparameters
