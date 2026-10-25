@@ -20,10 +20,14 @@ Working log. The summary is `docs/tracker.html`.
 | `ctf/nets.py`, `ctf/policy_io.py` | done | tanh MLP actor 158→128→128→(12+9+2); critic 256×256; numpy actor; `.npz` policy format |
 | `ctf/rewards.py` | done | score ±1, pickup 0.2, wall death −0.3, player death −0.1, carrier death −0.25, flag return +0.2, progress 0.5 per 180 units (annealed) |
 | `ctf/rollout.py`, `ctf/train.py` | done | Full-match lockstep workers; GAE across respawn gaps (tested against a reference); PPO with KL early stop, value normalisation, observation normalisation; checkpoint and resume |
-| `ctf/export.py` + latency tool | in progress | Single-file `model.py` |
-| `ctf/evaluate.py` | in progress | Paired-seed bootstrap gauntlet |
+| `ctf/export.py` + `tools/latency.py` | done | Inlines `features.py` verbatim; base64 weights; bit-exact against `NumpyActor`; callback p99 about 1 ms under stress; Python 3.9 OK |
+| `ctf/evaluate.py` | done | Paired-seed bootstrap; ~565 matches/min on 10 workers; `docs/eval/baseline_gauntlet.json` |
+| League | done | `self`, `pool` (PFSP (1−wr)²+0.05 over the last 20 snapshots plus extra globs) and `mirror` (both teams learn) |
+| `tools/auto_eval.py` | done | Gauntlets every 50th snapshot into `runs/RUN/eval.jsonl`; shown in the tracker |
+| Replay viewer | in progress | `tools/replay.py` and `docs/viewer.html` |
 | `opponents/*` | in progress | rusher, guardian, camper, relay, balanced |
-| Phase 1 review | in progress | sim, features, nets, rewards |
+| Phase 1 review | done | Critical: death-log cap (200) broke death penalties; progress shaping could be farmed by dying. Both fixed: deaths deduplicated by key; potential-based route shaping applied across deaths. Major fixes: wall deaths never home-filtered; bump inferred from pushing at rest; flag velocity keyed to the carrier; numpy-only `npnets`; idempotent encode |
+| Phase 2 review plus round 2 | in progress | trainer, rollout, export, evaluate, latency |
 
 ## Measurements
 - **Training machine physics:** 92k ticks/s across 8 processes with the broad phase (bit-identical).
@@ -33,7 +37,8 @@ Working log. The summary is `docs/tracker.html`.
 | Run | Config | Status / result |
 |---|---|---|
 | probe1 | 2 updates, idle | Throughput probe only |
-| m2a | PPO from scratch vs idle; progress shaping 0.5 annealing to 0.1 over 150M samples; 600 updates | running |
+| m2a | PPO from scratch vs idle (old rewards) | Stopped at ~16M samples because of the reward bugs; had reached 0.3 goals per match |
+| m2b | Same as m2a but with fixed potential-based rewards, win bonus 1.0, shaping annealing over 300M samples | running |
 
 ## Next
 1. Read the Phase 1 review and fix its findings.
