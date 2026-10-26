@@ -27,6 +27,10 @@ def load_decide(path):
     return module.decide
 
 
+def _silent(*args, **kwargs):
+    pass
+
+
 def idle(observation):
     return 0.0, 0.0, False
 
@@ -41,6 +45,8 @@ class ScriptedTeam:
         else:
             path = SCRIPTED.get(name, name)
             self._decide = {sid: load_decide(path) for sid in sphere_ids}
+            for decide in self._decide.values():
+                decide.__globals__["print"] = _silent
 
     def act(self, observations):
         actions = {}
