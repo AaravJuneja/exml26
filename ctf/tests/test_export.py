@@ -214,7 +214,8 @@ def test_exported_model_evaluates_like_npz_greedy(exported):
     reference = E.evaluate(f"{policy}@greedy", "example", [3, 4], max_ticks=1200,
                            n_boot=50)[1]
     # Eventful games, so a diverging trajectory would show up in the records.
-    assert sum(r["a"]["wall_deaths"] + r["b"]["player_deaths"] for r in reference) >= 3
+    assert sum(r["a"]["wall_deaths"] + r["a"]["player_deaths"] + r["b"]["wall_deaths"]
+               + r["b"]["player_deaths"] for r in reference) >= 3
     for spec in (str(model), f"{model}@proc"):
         assert E.parse_spec(spec).documented_only
         _, records = E.evaluate(spec, "example", [3, 4], max_ticks=1200, n_boot=50)

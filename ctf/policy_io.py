@@ -18,7 +18,7 @@ import numpy as np
 from ctf.features import FEATURE_DIM, N_THROTTLE, N_TURN
 from ctf.npnets import GRU_KEYS, HEAD_SIZES, NumpyActor, NumpyGRUActor
 
-FEATURE_VERSION = 1
+FEATURE_VERSION = 2
 ARCHS = ("mlp", "gru")
 
 

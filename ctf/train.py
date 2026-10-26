@@ -144,6 +144,42 @@ def merge_results(results, recurrent):
     return batch
 
 
+def feature_index_map(old_dim, new_dim=None):
+    """Positions of old features in the new layout.
+
+    New features are always inserted immediately before the previous-action block
+    (the last ACTION_DIM features), so everything else keeps its offset.
+    """
+    new_dim = F.FEATURE_DIM if new_dim is None else new_dim
+    inserted = new_dim - old_dim
+    split = old_dim - F.ACTION_DIM
+    return [i if i < split else i + inserted for i in range(old_dim)]
+
+
+def expand_features(state, old_dim):
+    """Warm-start surgery: zero input weights and identity normalization for new features."""
+    index = torch.as_tensor(feature_index_map(old_dim))
+    new_dim = F.FEATURE_DIM
+
+    def widen(tensor):
+        if tensor.dim() == 2 and tensor.shape[1] == old_dim:
+            wide = torch.zeros(tensor.shape[0], new_dim, dtype=tensor.dtype)
+            wide[:, index] = tensor
+            return wide
+        return tensor
+
+    state = dict(state)
+    for key in ("actor", "critic"):
+        state[key] = {name: widen(t) for name, t in state[key].items()}
+    norm = dict(state["norm"])
+    mean, var = np.zeros(new_dim), np.ones(new_dim)
+    mean[index.numpy()] = norm["mean"]
+    var[index.numpy()] = norm["var"]
+    norm.update(mean=mean, var=var)
+    state["norm"] = norm
+    return state
+
+
 def parse_mix(text):
     mix = []
     for part in text.split(","):
@@ -206,6 +242,12 @@ class Trainer:
         arch = state.get("args", {}).get("arch", "mlp")
         if arch != self.args.arch:
             raise ValueError(f"{path} holds a {arch!r} actor but --arch is {self.args.arch!r}")
+        old_dim = len(state["norm"]["mean"])
+        if old_dim != F.FEATURE_DIM:
+            if not weights_only:
+                raise ValueError(f"{path} uses {old_dim} features; resume needs {F.FEATURE_DIM}"
+                                 " (use --init to warm-start with feature surgery)")
+            state = expand_features(state, old_dim)
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
         self.norm.load(state["norm"])

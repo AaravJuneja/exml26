@@ -13,7 +13,7 @@ from ctf import features as F
 from ctf.export import export
 from ctf.nets import GRUActor, actor_to_numpy, log_prob_entropy
 from ctf.npnets import GRU_KEYS, HEAD_SIZES, NumpyActor, NumpyGRUActor, PolicyMemories
-from ctf.policy_io import load_policy, save_policy
+from ctf.policy_io import FEATURE_VERSION, load_policy, save_policy
 from ctf.rewards import DEFAULT_WEIGHTS
 from ctf.rollout import collect
 from ctf.sim import Match
@@ -90,7 +90,7 @@ def test_policy_file_roundtrip_and_backward_compat(tmp_path):
     # A file written before `arch` existed (meta without it) still loads as an MLP.
     old = tmp_path / "old.npz"
     meta = {"feature_dim": F.FEATURE_DIM, "head_sizes": list(HEAD_SIZES),
-            "activation": "tanh", "feature_version": 1}
+            "activation": "tanh", "feature_version": FEATURE_VERSION}
     w0 = np.ones((F.FEATURE_DIM, sum(HEAD_SIZES)), dtype=np.float32)
     np.savez(old, W0=w0, b0=np.zeros(sum(HEAD_SIZES), np.float32),
              obs_mean=np.zeros(F.FEATURE_DIM, np.float32),

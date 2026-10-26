@@ -33,6 +33,13 @@ DANGER_SLOTS = 4
 DANGER_TICKS = 600
 HOME_CLEAR = 12.0
 RESPAWN_TICKS = 60
+CELL = 2.2   # cells are centred on multiples of CELL: boundaries avoid 0, +-90 (homes) and
+GRID = 93    # +-99 (arena clamp), and a 180-degree rotation maps cells exactly onto cells
+GRID_HALF = GRID // 2
+RAY_RANGE = 24.0
+RAY_ANGLES = (0.0, 0.25 * math.pi, -0.25 * math.pi, 0.5 * math.pi, -0.5 * math.pi,
+              0.75 * math.pi, -0.75 * math.pi, math.pi)
+UNKNOWN, FREE, BLOCKED = 0, 1, 2
 
 SELF_DIM = 22
 GAME_DIM = 5
@@ -40,9 +47,10 @@ FLAG_DIM = 22
 ENEMY_DIM = 14
 BUMP_DIM = 3
 DANGER_DIM = 5
+FREE_DIM = len(RAY_ANGLES) + 3
 ACTION_DIM = N_THROTTLE + N_TURN + 1
 FEATURE_DIM = (SELF_DIM + GAME_DIM + FLAG_DIM + ENEMY_SLOTS * ENEMY_DIM
-               + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + ACTION_DIM)
+               + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + FREE_DIM + ACTION_DIM)
 
 
 def _clip(value, low, high):
@@ -76,6 +84,8 @@ class PlayerMemory:
         self.cached = None
         self.flag_velocity = (0.0, 0.0)
         self.bumps = []
+        self.grid = bytearray(GRID * GRID)
+        self.homes_marked = set()
         self.deaths = {}
         self.enemies = {}
         self.prev_throttle = IDLE_THROTTLE
@@ -86,6 +96,48 @@ class PlayerMemory:
         self.prev_throttle = throttle_index
         self.prev_turn = turn_index
         self.prev_jump = bool(jump)
+
+    # ------------------------------------------------------------ clear map
+    def _cell(self, x, y):
+        ix = int(math.floor(x / CELL + 0.5)) + GRID_HALF
+        iy = int(math.floor(y / CELL + 0.5)) + GRID_HALF
+        if 0 <= ix < GRID and 0 <= iy < GRID:
+            return iy * GRID + ix
+        return -1
+
+    def mark_free(self, x, y):
+        index = self._cell(x, y)
+        if index >= 0 and self.grid[index] == UNKNOWN:
+            self.grid[index] = FREE
+
+    def mark_blocked(self, x, y):
+        index = self._cell(x, y)
+        if index >= 0:
+            self.grid[index] = BLOCKED
+
+    def _mark_home(self, home):
+        key = (round(home[0], 3), round(home[1], 3))
+        if key in self.homes_marked:
+            return
+        self.homes_marked.add(key)
+        steps = int(HOME_CLEAR / CELL)
+        for i in range(-steps, steps + 1):
+            for j in range(-steps, steps + 1):
+                if (i * CELL) ** 2 + (j * CELL) ** 2 <= (HOME_CLEAR - CELL) ** 2:
+                    self.mark_free(home[0] + i * CELL, home[1] + j * CELL)
+
+    def ray(self, x, y, dx, dy):
+        """Known-clear distance along unit direction (dx, dy); flag if it ended at a block."""
+        d = 1.0
+        while d <= RAY_RANGE:
+            index = self._cell(x + dx * d, y + dy * d)
+            if index < 0:
+                return d - 1.0, 1.0
+            state = self.grid[index]
+            if state != FREE:
+                return d - 1.0, 1.0 if state == BLOCKED else 0.0
+            d += 1.0
+        return RAY_RANGE, 0.0
 
     # ----------------------------------------------------------------- updates
     def _add_bump(self, x, y, inferred=False):
@@ -99,6 +151,7 @@ class PlayerMemory:
             if (bx - x) ** 2 + (by - y) ** 2 < 2.25:
                 return
         self.bumps.append((x, y))
+        self.mark_blocked(x, y)
         if len(self.bumps) > BUMP_CAPACITY:
             del self.bumps[0]
 
@@ -124,6 +177,9 @@ class PlayerMemory:
             self.side_known = True
         elif self.side is None:
             self.side = -1.0 if x > 0 else 1.0
+        for home in (self.own_home, self.enemy_home):
+            if home is not None:
+                self._mark_home(home)
 
         gap = tick - self.prev_tick if self.prev_tick is not None else 0
         prev = self.prev_self
@@ -156,6 +212,17 @@ class PlayerMemory:
         else:
             self.flag_velocity = (0.0, 0.0)
         self.prev_own_flag = (fx, fy, carrier)
+
+        # Ground known to be clear: where this player, seen enemies and flag carriers have been.
+        self.mark_free(x, y)
+        if carrier != -1 and self.flag_streak >= 2:
+            self.mark_free(fx, fy)
+        for flag in observation.get("other_flags") or ():
+            if flag.get("carried_by", -1) not in (-1, me.get("id")):
+                self.mark_free(_num(flag.get("x")), _num(flag.get("y")))
+        for enemy in observation.get("visible_enemies") or ():
+            if _num(enemy.get("z"), 1.0) < 2.0:
+                self.mark_free(_num(enemy.get("x")), _num(enemy.get("y")))
 
         for message in observation.get("death_messages") or ():
             key = (message.get("player"), message.get("tick"))
@@ -309,6 +376,21 @@ def encode(observation, memory):
                     (tick - deaths[i][2]) / DANGER_TICKS, 0.0 if deaths[i][3] else 1.0]
         else:
             out += [0.0] * DANGER_DIM
+
+    for angle in RAY_ANGLES:
+        distance, _ = memory.ray(x, y, math.sin(yaw + angle), math.cos(yaw + angle))
+        out.append(distance / RAY_RANGE)
+    if speed > 0.5:
+        distance, blocked = memory.ray(x, y, vx / speed, vy / speed)
+    else:
+        distance, blocked = memory.ray(x, y, sin_yaw, cos_yaw)
+    known = 0
+    for i in (-2, -1, 0, 1, 2):
+        for j in (-2, -1, 0, 1, 2):
+            index = memory._cell(x + i * CELL, y + j * CELL)
+            if index >= 0 and memory.grid[index] == FREE:
+                known += 1
+    out += [distance / RAY_RANGE, blocked, known / 25.0]
 
     action = [0.0] * ACTION_DIM
     action[memory.prev_throttle] = 1.0

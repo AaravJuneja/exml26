@@ -81,3 +81,32 @@ def test_training_smoke_gru(tmp_path):
         assert "arch" in str(exc)
     else:
         raise AssertionError("loading a gru checkpoint into an mlp actor must fail")
+
+
+def test_feature_surgery_preserves_old_policy(tmp_path):
+    """A checkpoint built for fewer features plays identically after expansion (new inputs zeroed)."""
+    import torch
+
+    from ctf import features as F
+    from ctf.nets import Actor
+    from ctf.train import expand_features, feature_index_map
+
+    old_dim = F.FEATURE_DIM - 11
+    torch.manual_seed(0)
+    old = Actor((32, 32)) if not hasattr(Actor, "__wrapped__") else None
+    # build an old-width actor by hand
+    old_net = torch.nn.Sequential(torch.nn.Linear(old_dim, 32), torch.nn.Tanh(),
+                                  torch.nn.Linear(32, 23))
+    state = {"actor": {"net.0.weight": old_net[0].weight.detach().clone(),
+                       "net.0.bias": old_net[0].bias.detach().clone(),
+                       "net.2.weight": old_net[2].weight.detach().clone(),
+                       "net.2.bias": old_net[2].bias.detach().clone()},
+             "critic": {}, "norm": {"mean": np.zeros(old_dim), "var": np.ones(old_dim), "count": 5.0}}
+    new = expand_features(state, old_dim)
+    x_old = torch.randn(7, old_dim)
+    x_new = torch.randn(7, F.FEATURE_DIM)  # random values in the new feature slots
+    x_new[:, feature_index_map(old_dim)] = x_old
+    w, b = new["actor"]["net.0.weight"], new["actor"]["net.0.bias"]
+    assert torch.allclose(x_old @ old_net[0].weight.T + old_net[0].bias, x_new @ w.T + b, atol=1e-5)
+    assert new["norm"]["mean"].shape == (F.FEATURE_DIM,)
+    del old
