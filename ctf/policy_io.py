@@ -14,12 +14,16 @@ Files written before feature version 5 have no feature names; their layout is
 reconstructed from ctf/feature_layouts.py. An MLP file built for another layout
 can be migrated explicitly (`load_policy(..., migrate=True)` or tools/migrate_policy.py);
 by default a different layout is an error, so old snapshots are never silently altered.
+
+Policies of the goal action space (`meta["action_space"] == "goal"`, heading/speed
+action tables) load as actors with `space == "goal"`; they are never migrated.
 """
 
 import json
 
 import numpy as np
 
+from ctf import action_space as A
 from ctf import feature_layouts as L
 from ctf.features import (ACTION_TABLES, FEATURE_DIM, FEATURE_NAMES, FEATURE_VERSION, N_THROTTLE,
                           N_TURN)
@@ -29,20 +33,30 @@ ARCHS = ("mlp", "gru")
 CURRENT_LAYOUT = (FEATURE_VERSION, FEATURE_NAMES, ACTION_TABLES)
 
 
-def layout_meta():
+def layout_meta(space="bins"):
     """Meta entries describing the current feature encoder and action tables."""
+    space = A.get(space)
+    if space.name == "bins":
+        return {
+            "feature_dim": FEATURE_DIM,
+            "feature_version": FEATURE_VERSION,
+            "feature_names": list(FEATURE_NAMES),
+            "action_tables": {head: list(values) for head, values in ACTION_TABLES.items()},
+            "head_sizes": list(HEAD_SIZES),
+            "n_throttle": N_THROTTLE,
+            "n_turn": N_TURN,
+        }
     return {
-        "feature_dim": FEATURE_DIM,
+        "action_space": space.name,
+        "feature_dim": space.feature_dim,
         "feature_version": FEATURE_VERSION,
-        "feature_names": list(FEATURE_NAMES),
-        "action_tables": {head: list(values) for head, values in ACTION_TABLES.items()},
-        "head_sizes": list(HEAD_SIZES),
-        "n_throttle": N_THROTTLE,
-        "n_turn": N_TURN,
+        "feature_names": list(space.feature_names),
+        "action_tables": {head: list(values) for head, values in space.tables.items()},
+        "head_sizes": list(space.head_sizes),
     }
 
 
-def save_policy(path, weights, obs_mean, obs_std, **meta):
+def save_policy(path, weights, obs_mean, obs_std, space="bins", **meta):
     """`weights`: list of (W, b) for an MLP, or a dict of GRU_KEYS arrays for a GRU."""
     arrays = {}
     if isinstance(weights, dict):
@@ -55,7 +69,7 @@ def save_policy(path, weights, obs_mean, obs_std, **meta):
         for i, (w, b) in enumerate(weights):
             arrays[f"W{i}"] = np.asarray(w, dtype=np.float32)
             arrays[f"b{i}"] = np.asarray(b, dtype=np.float32)
-    meta = {"arch": arch, **layout_meta(), "activation": "tanh", **meta}
+    meta = {"arch": arch, **layout_meta(space), "activation": "tanh", **meta}
     arrays["obs_mean"] = np.asarray(obs_mean, dtype=np.float32)
     arrays["obs_std"] = np.asarray(obs_std, dtype=np.float32)
     arrays["meta"] = np.array(json.dumps(meta))
@@ -107,34 +121,43 @@ def migrate_policy_arrays(weights, mean, std, meta):
     return weights, mean, std, meta
 
 
-def load_policy(path, migrate=False):
-    """Return (NumpyActor or NumpyGRUActor, meta dict).
+def policy_space(meta):
+    """The action space a policy file was built for."""
+    tables = meta.get("action_tables")
+    return A.of_tables(tables) if tables is not None else A.BINS
 
-    With `migrate`, an MLP built for an older feature layout is migrated in memory
-    (meta gains `migrated_from`); otherwise a different layout is an error.
+
+def load_policy(path, migrate=False):
+    """Return (NumpyActor or NumpyGRUActor, meta dict); `actor.space` names its action space.
+
+    With `migrate`, a bins-space MLP built for an older feature layout is migrated in
+    memory (meta gains `migrated_from`); otherwise a different layout is an error.
     """
     arch, weights, mean, std, meta = read_policy(path)
     names, tables = policy_layout(meta)
-    if not L.same_layout(names, tables, FEATURE_NAMES, ACTION_TABLES):
-        if not migrate or arch != "mlp":
+    space = A.of_tables(tables)
+    if not L.same_layout(names, tables, space.feature_names, space.tables):
+        if not migrate or arch != "mlp" or space.name != "bins":
             raise ValueError(f"policy {path} was built for a different feature encoder")
         weights, mean, std, meta = migrate_policy_arrays(weights, mean, std, meta)
-    if mean.shape != (FEATURE_DIM,):
+    if mean.shape != (space.feature_dim,):
         raise ValueError(f"policy {path} normalization does not match the feature encoder")
     if arch == "gru":
-        actor = NumpyGRUActor(weights, mean, std)
+        actor = NumpyGRUActor(weights, mean, std, space.name)
     else:
-        actor = NumpyActor(weights, mean, std)
+        actor = NumpyActor(weights, mean, std, space.name)
     return actor, meta
 
 
-def random_policy(path, hidden=(128, 128), seed=0, arch="mlp"):
+def random_policy(path, hidden=(128, 128), seed=0, arch="mlp", space="bins"):
     """A randomly initialized policy file (for tooling tests)."""
     import torch
 
     from ctf.nets import actor_to_numpy, build_actor
 
     torch.manual_seed(seed)
-    actor = build_actor(arch, hidden)
-    save_policy(path, actor_to_numpy(actor), np.zeros(FEATURE_DIM), np.ones(FEATURE_DIM),
+    space = A.get(space)
+    actor = build_actor(arch, hidden, space.feature_dim, space.head_sizes)
+    dim = space.feature_dim
+    save_policy(path, actor_to_numpy(actor), np.zeros(dim), np.ones(dim), space=space.name,
                 notes="random init")

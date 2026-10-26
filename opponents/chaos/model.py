@@ -39,6 +39,7 @@ class _Mem(object):
 M = _Mem()
 M.ready = False
 M.match_no = -1
+M.goal = None  # (absolute heading, target speed) of the last _drive call; read by training labellers
 
 
 def _clamp(v, lo=-1.0, hi=1.0):
@@ -441,6 +442,7 @@ def _drive(me, tick, tx, ty, v, rev=True, arrive=0.0, vmin=0.0):
     dx, dy = tx - x, ty - y
     dist = math.hypot(dx, dy)
     if dist < 1e-6:
+        M.goal = (yaw, 0.0)
         return _throttle(me, 0.0, 1.0), 0.0
     a = math.atan2(dx, dy)
     if tick - M.bump_tick < 10:
@@ -471,6 +473,7 @@ def _drive(me, tick, tx, ty, v, rev=True, arrive=0.0, vmin=0.0):
     if vt < vmin:
         vt = min(vmin, v)
     vt = min(vt, _vcap(me, a))
+    M.goal = (a, vt)
     # velocity-vector control: thrust (forward or reverse) along the velocity error
     sa, ca = math.sin(a), math.cos(a)
     k = vt / 0.98
@@ -995,6 +998,7 @@ def decide(observation):
         if e is not None and t < 0.35 and M.rng.random() < M.p.get("jump", 1.0):
             jump = True
 
+    M.goal = None
     if M.watch is not None and hit is None and tick - M.bump_tick >= 10:
         throttle, turn = _watch_drive(me, *M.watch)
     else:

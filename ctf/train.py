@@ -7,6 +7,12 @@ policy; the learner computes gap-aware GAE (players have no callbacks while
 dead, so transitions span the respawn gap with discount gamma**gap), then runs
 clipped PPO epochs. Logs go to runs/NAME/log.jsonl, policies to runs/NAME/policies/.
 
+`--action-space goal` trains the goal action space (ctf/action_space.py): heads
+heading, speed and jump, decoded by the fixed controller of ctf/controller.py;
+its feature layout differs in the previous-action block, so it trains from
+scratch (no migration from bins checkpoints). Kickstarting (`--teacher`) labels
+are the teacher's goals projected onto those heads.
+
 `--arch gru` swaps the MLP actor for GRUActor (the critic stays a feed-forward
 MLP over the same features). GAE is unchanged; the policy loss is computed
 over per-player sequences of alive decisions, cut into `--chunk`-step chunks
@@ -26,6 +32,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from ctf import action_space as A
 from ctf import feature_layouts as L
 from ctf import features as F
 from ctf.nets import Critic, RunningNorm, actor_to_numpy, build_actor, log_prob_entropy
@@ -288,11 +295,13 @@ class Trainer:
             if args.chunk < 1 or not 0 <= args.burn_in <= args.chunk:
                 raise ValueError("--arch gru needs --chunk >= 1 and 0 <= --burn-in <= --chunk")
         self.recurrent = args.arch == "gru"
-        self.actor = build_actor(args.arch, tuple(args.hidden)).to(self.device)
-        self.critic = Critic(tuple(args.critic_hidden)).to(self.device)
+        self.space = A.get(getattr(args, "action_space", "bins"))
+        self.actor = build_actor(args.arch, tuple(args.hidden), self.space.feature_dim,
+                                 self.space.head_sizes).to(self.device)
+        self.critic = Critic(tuple(args.critic_hidden), self.space.feature_dim).to(self.device)
         self.optimizer = torch.optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters()), lr=args.lr, eps=1e-5)
-        self.norm = RunningNorm(F.FEATURE_DIM)
+        self.norm = RunningNorm(self.space.feature_dim)
         self.ret_norm = RunningNorm(1)
         self.update = 0
         self.samples = 0
@@ -314,8 +323,8 @@ class Trainer:
             "opp_winrate": self.opp_winrate, "norm_frozen": self.norm_frozen,
             "np_rng": self.rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
             "args": vars(self.args),
-            "feature_names": list(F.FEATURE_NAMES),
-            "action_tables": {head: list(v) for head, v in F.ACTION_TABLES.items()},
+            "feature_names": list(self.space.feature_names),
+            "action_tables": {head: list(v) for head, v in self.space.tables.items()},
         }
 
     def save(self):
@@ -329,7 +338,8 @@ class Trainer:
         if arch != self.args.arch:
             raise ValueError(f"{path} holds a {arch!r} actor but --arch is {self.args.arch!r}")
         names, tables = state_layout(state)
-        if not L.same_layout(names, tables, F.FEATURE_NAMES, F.ACTION_TABLES):
+        space = self.space
+        if not L.same_layout(names, tables, space.feature_names, space.tables):
             if not weights_only:
                 raise ValueError(f"{path} uses another feature layout ({len(names)} features); "
                                  "resume needs the current one (use --init to warm-start "
@@ -339,7 +349,7 @@ class Trainer:
             if "feature_names" not in state and len(names) == V3_DIM:
                 state = migrate_v3_to_v4(state)
                 names, tables = L.V4_FEATURE_NAMES, L.V4_ACTION_TABLES
-            state = migrate_state(state, names, tables)
+            state = migrate_state(state, names, tables, space.feature_names, space.tables)
         if weights_only and self.args.arch == "mlp":
             # Net2WiderNet when the requested network is wider than the checkpoint.
             actor_hidden = [t.shape[0] for k, t in sorted(state["actor"].items())
@@ -366,7 +376,7 @@ class Trainer:
 
     def export_policy(self, path):
         save_policy(path, actor_to_numpy(self.actor), self.norm.mean, self.norm.std,
-                    run=self.args.name, update=self.update, samples=self.samples)
+                    space=self.space.name, run=self.args.name, update=self.update, samples=self.samples)
 
     # ------------------------------------------------------------ schedules
     def progress_fraction(self):
@@ -543,7 +553,7 @@ class Trainer:
         for _epoch in range(args.epochs):
             for idx, logits in self.minibatches(x_all, n, seqs if self.recurrent else None,
                                                 h0 if self.recurrent else None):
-                logp, entropy = log_prob_entropy(logits, act_t[idx])
+                logp, entropy = log_prob_entropy(logits, act_t[idx], self.space.head_sizes)
                 if first:  # weights untouched: recomputed log-probs must match the rollout's
                     extra["logp_drift"] = float((logp - old_logp[idx]).abs().max().item())
                     first = False
@@ -558,22 +568,24 @@ class Trainer:
                 out = self.critic(x_all[idx])
                 v_loss = 0.5 * (out[:, 0] - ret_t[idx]).pow(2).mean()
                 v_loss = v_loss + 0.5 * (out[:, 1] - win_t[idx]).pow(2).mean()
-                if actor_stopped:  # past the trust region: keep fitting the critic only
+                if actor_stopped:  # past the trust region: no more policy-gradient steps
                     loss = args.vf_coef * v_loss
                 else:
                     loss = pi_loss + args.vf_coef * v_loss - ent_coef * entropy.mean()
-                    if kick_coef:
-                        # Kickstarting: cross-entropy toward the shadow teacher's labels on
-                        # the states the student visits (DAgger-style), annealed to zero.
-                        valid = teach_valid[idx]
-                        teach_logp, _ = log_prob_entropy(logits, teach_t[idx])
-                        kick_ce = -(teach_logp * valid).sum() / valid.sum().clamp(min=1.0)
-                        loss = loss + kick_coef * kick_ce
-                        with torch.no_grad():
-                            stats["kick_ce"].append(kick_ce.detach())
-                            stats["kick_agree"].append(((act_t[idx] == teach_t[idx]).all(-1)
-                                                        .float() * valid).sum()
-                                                       / valid.sum().clamp(min=1.0))
+                if kick_coef:
+                    # Kickstarting: cross-entropy toward the shadow teacher's labels on the
+                    # states the student visits (DAgger-style), annealed to zero. Supervised,
+                    # so it keeps training after the PPO trust-region stop.
+                    valid = teach_valid[idx]
+                    teach_logp, _ = log_prob_entropy(logits, teach_t[idx],
+                                                     self.space.head_sizes)
+                    kick_ce = -(teach_logp * valid).sum() / valid.sum().clamp(min=1.0)
+                    loss = loss + kick_coef * kick_ce
+                    with torch.no_grad():
+                        stats["kick_ce"].append(kick_ce.detach())
+                        stats["kick_agree"].append(((act_t[idx] == teach_t[idx]).all(-1)
+                                                    .float() * valid).sum()
+                                                   / valid.sum().clamp(min=1.0))
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -695,6 +707,7 @@ class Trainer:
         mean, std = self.norm.mean.astype(np.float32), self.norm.std.astype(np.float32)
         config = {"reward_weights": self.reward_weights(), "max_ticks": args.max_ticks,
                   "teacher": args.teacher if self.kick_coef() > 0 else None,
+                  "action_space": self.space.name,
                   "memory_wipe_prob": args.memory_wipe,
                   "hidden_every": hidden_every(args.chunk, args.burn_in)}
         for pipe in pipes:
@@ -761,6 +774,9 @@ def main(argv=None):
                    help="actor: tanh MLP over --hidden, or gru = Linear(H1)+tanh -> GRU(HG) "
                         "with --hidden H1 HG")
     p.add_argument("--hidden", type=int, nargs="+", default=[128, 128])
+    p.add_argument("--action-space", choices=sorted(A.SPACES), default="bins",
+                   help="bins: throttle/turn bins; goal: heading/speed goals driven by the fixed "
+                        "controller of ctf/controller.py (trains from scratch)")
     p.add_argument("--chunk", type=int, default=64,
                    help="gru: decisions per training sequence")
     p.add_argument("--burn-in", type=int, default=-1,

@@ -11,7 +11,8 @@ Player specs (strings or `PlayerSpec`)
     baseline|example|example2  provided scripted models
     path/to/model.py           any module with `decide(observation)`
     path/to/policy.npz         batched NumpyActor (or NumpyGRUActor with per-player hidden
-                               state) over three PlayerMemory objects
+                               state) over three PlayerMemory objects; goal-space policies
+                               drive through the fixed controller (ctf/action_space.py)
 
 Options follow an `@`, comma separated:
     @greedy      argmax actions (default for .npz)
@@ -60,7 +61,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ctf.features import THROTTLE_VALUES, TURN_VALUES, PlayerMemory, encode
+from ctf.features import encode
 from ctf.npnets import PolicyMemories
 from ctf.policies import ROOT, SCRIPTED
 from ctf.sim import DOCUMENTED_KEYS, Match
@@ -351,7 +352,7 @@ class _PolicyTeam:
         self.greedy = spec.greedy
         self.rng = rng
         self.ids = sorted(sphere_ids)
-        self.state = PolicyMemories(self.actor, self.ids, encode, PlayerMemory)
+        self.state = PolicyMemories(self.actor, self.ids, encode)
         self.memories = self.state.memories
         self.errors = 0
         self.times = []
@@ -361,11 +362,10 @@ class _PolicyTeam:
         if not ids:
             return {}
         start = time.perf_counter()
-        batch = self.state.encode_batch(ids, [_documented(observations[sid]) for sid in ids])
-        chosen = self.state.act(ids, batch, self.rng, self.greedy)
-        actions = {}
-        for sid, (throttle, turn, jump) in zip(ids, chosen.tolist()):
-            actions[sid] = (THROTTLE_VALUES[throttle], TURN_VALUES[turn], bool(jump))
+        docs = [_documented(observations[sid]) for sid in ids]
+        batch = self.state.encode_batch(ids, docs)
+        _, engine = self.state.act_engine(ids, batch, self.rng, self.greedy, docs)
+        actions = dict(zip(ids, engine))
         self.times.append(time.perf_counter() - start)
         return actions
 

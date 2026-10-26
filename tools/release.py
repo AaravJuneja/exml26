@@ -345,8 +345,8 @@ def first_divergence(model_path, policy_path, opponent, seed, side, max_ticks, t
     below `tol`) in the batched reference."""
     import numpy as np
 
+    from ctf import action_space
     from ctf import evaluate as E
-    from ctf.npnets import HEAD_SIZES
     from ctf.sim import Match
 
     mine_spec, ref_spec = E.parse_spec(str(model_path)), E.parse_spec(f"{policy_path}@greedy")
@@ -389,7 +389,8 @@ def first_divergence(model_path, policy_path, opponent, seed, side, max_ticks, t
                 # holds this decision.
                 module = np.asarray(mine.decide[sid].__globals__.get("_MX_LOGITS", np.nan))
                 heads, start, near = [], 0, True
-                for name, size in zip(("throttle", "turn", "jump"), HEAD_SIZES):
+                space = action_space.get(actor.space)
+                for name, size in zip(space.head_names, space.head_sizes):
                     part, m_part = batched[start:start + size], module[start:start + size]
                     choice = int(m_part.argmax()) if m_part.shape == part.shape else -1
                     gap = float(part.max() - part[choice]) if choice >= 0 else float("inf")

@@ -29,6 +29,24 @@ N_TURN = len(TURN_VALUES)
 IDLE_THROTTLE = THROTTLE_VALUES.index(0.0)
 IDLE_TURN = TURN_VALUES.index(0.0)
 
+# Optional `goal` action space (--action-space goal): the network picks a heading
+# (degrees relative to the current yaw, clockwise; 0 = facing, 90 = right) and a
+# speed (u/s after friction), and the fixed controller of ctf/controller.py turns
+# them into throttle and turn every tick. Its layout differs from the default one
+# only in the previous-action block (GOAL_FEATURE_NAMES).
+# Headings are finer straight ahead and straight behind, where relay's goals
+# concentrate (uniform 16 or 24 bins lose about 2.5 goals per match against relay
+# in tools/goal_oracle.py; these 26 bins lose none). 10.5 is relay's governor
+# speed, 10.85 the fastest speed safe against obstacles (lethal at 11), 17.64 the top.
+_HALF_HEADINGS = (6.0, 12.0, 20.0, 30.0, 45.0, 65.0, 90.0, 115.0, 135.0, 150.0, 162.0, 172.0)
+HEADING_VALUES = tuple(-v for v in reversed(_HALF_HEADINGS)) + (0.0,) + _HALF_HEADINGS + (180.0,)
+SPEED_VALUES = (0.0, 3.0, 6.0, 8.5, 10.5, 10.85, 12.0, 14.5, 17.64)
+GOAL_ACTION_TABLES = {"heading": HEADING_VALUES, "speed": SPEED_VALUES}
+N_HEADING = len(HEADING_VALUES)
+N_SPEED = len(SPEED_VALUES)
+IDLE_HEADING = HEADING_VALUES.index(0.0)
+IDLE_SPEED = SPEED_VALUES.index(0.0)
+
 ARENA_LIMIT = 99.0
 LETHAL_SPEED = 11.0
 ENEMY_SLOTS = 3
@@ -67,6 +85,8 @@ ACTION_DIM = N_THROTTLE + N_TURN + 1
 FEATURE_DIM = (SELF_DIM + GAME_DIM + FLAG_DIM + ENEMY_SLOTS * ENEMY_DIM
                + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + FREE_DIM + TEAM_DIM
                + MEMORY_DIM + ACTION_DIM)
+GOAL_ACTION_DIM = N_HEADING + N_SPEED + 1
+GOAL_FEATURE_DIM = FEATURE_DIM - ACTION_DIM + GOAL_ACTION_DIM
 
 
 def _feature_names():
@@ -109,6 +129,11 @@ def _feature_names():
 FEATURE_NAMES = _feature_names()
 if len(FEATURE_NAMES) != FEATURE_DIM or len(set(FEATURE_NAMES)) != FEATURE_DIM:
     raise ValueError("FEATURE_NAMES must name every feature column exactly once")
+GOAL_FEATURE_NAMES = (FEATURE_NAMES[:FEATURE_DIM - ACTION_DIM]
+                      + tuple("prev.heading=%r" % v for v in HEADING_VALUES)
+                      + tuple("prev.speed=%r" % v for v in SPEED_VALUES) + ("prev.jump",))
+if len(GOAL_FEATURE_NAMES) != GOAL_FEATURE_DIM or len(set(GOAL_FEATURE_NAMES)) != GOAL_FEATURE_DIM:
+    raise ValueError("GOAL_FEATURE_NAMES must name every feature column exactly once")
 
 
 def _clip(value, low, high):
@@ -194,9 +219,14 @@ def _rays(grid, x, y, directions):
 
 
 class PlayerMemory:
-    """Everything one player remembers between callbacks within a match."""
+    """Everything one player remembers between callbacks within a match.
 
-    def __init__(self):
+    `goal=True`: the player acts in the goal action space (previous-action
+    features encode the previous goal; see GOAL_FEATURE_NAMES).
+    """
+
+    def __init__(self, goal=False):
+        self.goal = bool(goal)
         self.reset()
 
     def reset(self):
@@ -223,11 +253,23 @@ class PlayerMemory:
         self.prev_throttle = IDLE_THROTTLE
         self.prev_turn = IDLE_TURN
         self.prev_jump = False
+        self.prev_push = 0.0  # throttle value sent to the engine on the previous decision
+        self.prev_heading = IDLE_HEADING
+        self.prev_speed = IDLE_SPEED
+        self.ctrl = (None, False, False)  # goal controller state (ctf/controller.py goal_step)
 
     def set_action(self, throttle_index, turn_index, jump):
         self.prev_throttle = throttle_index
         self.prev_turn = turn_index
         self.prev_jump = bool(jump)
+        self.prev_push = THROTTLE_VALUES[throttle_index]
+
+    def set_goal(self, heading_index, speed_index, jump, throttle):
+        """Goal action space: the chosen goal and the throttle the controller sent."""
+        self.prev_heading = heading_index
+        self.prev_speed = speed_index
+        self.prev_jump = bool(jump)
+        self.prev_push = throttle
 
     # ------------------------------------------------------------ clear map
     def _cell(self, x, y):
@@ -328,13 +370,13 @@ class PlayerMemory:
         prev_speed = speed
         if prev is not None and gap == 1:
             prev_speed = _num(prev.get("speed"))
-            pushed = abs(THROTTLE_VALUES[self.prev_throttle]) * 6.0 > 0.05
+            pushed = abs(self.prev_push) * 6.0 > 0.05
             if ((prev_speed > 0.5 or pushed) and speed < 1e-9
                     and abs(x) < ARENA_LIMIT - 1.5 and abs(y) < ARENA_LIMIT - 1.5):
                 if prev_speed > 0.5:
                     dx, dy = _num(prev.get("vx")), _num(prev.get("vy"))
                 else:
-                    sign = 1.0 if THROTTLE_VALUES[self.prev_throttle] > 0 else -1.0
+                    sign = 1.0 if self.prev_push > 0 else -1.0
                     yaw = _num(me.get("yaw"))
                     dx, dy = sign * math.sin(yaw), sign * math.cos(yaw)
                 norm = math.hypot(dx, dy) or 1.0
@@ -351,7 +393,7 @@ class PlayerMemory:
         else:
             self.trail = [(x, y, 0.0)]
         if (gap == 1 and speed < 1.0
-                and abs(THROTTLE_VALUES[self.prev_throttle]) * 6.0 > 0.05):
+                and abs(self.prev_push) * 6.0 > 0.05):
             self.stuck += 1
         else:
             self.stuck = 0
@@ -687,9 +729,14 @@ def encode(observation, memory):
     else:
         out += (0.0, 0.0, 0.0)
 
-    action = [0.0] * ACTION_DIM
-    action[memory.prev_throttle] = 1.0
-    action[N_THROTTLE + memory.prev_turn] = 1.0
+    if memory.goal:
+        action = [0.0] * GOAL_ACTION_DIM
+        action[memory.prev_heading] = 1.0
+        action[N_HEADING + memory.prev_speed] = 1.0
+    else:
+        action = [0.0] * ACTION_DIM
+        action[memory.prev_throttle] = 1.0
+        action[N_THROTTLE + memory.prev_turn] = 1.0
     action[-1] = 1.0 if memory.prev_jump else 0.0
     out += action
     memory.cached = out

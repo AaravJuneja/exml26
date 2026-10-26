@@ -24,6 +24,7 @@ Numpy only (used by ctf.policy_io).
 import numpy as np
 
 HEADS = ("throttle", "turn")
+GOAL_HEADS = ("heading", "speed")  # the goal action space (ctf/action_space.py)
 NORM_CLIP = 5.0  # normalized features are clipped to +-NORM_CLIP (NumpyActor, trainer)
 
 V4_ACTION_TABLES = {
@@ -87,9 +88,22 @@ LEGACY_LAYOUTS = {3: (V3_FEATURE_NAMES, V3_ACTION_TABLES), 4: (V4_FEATURE_NAMES,
 assert len(V4_FEATURE_NAMES) == 191 and len(V3_FEATURE_NAMES) == 180
 
 
+def heads_of(tables):
+    """The action heads of a tables mapping: HEADS, or GOAL_HEADS for the goal space."""
+    return GOAL_HEADS if "heading" in tables else HEADS
+
+
 def normalize_tables(tables):
-    """{head: tuple of floats} for HEADS, from any mapping of sequences (e.g. JSON lists)."""
-    return {head: tuple(float(v) for v in tables[head]) for head in HEADS}
+    """{head: tuple of floats} for its heads, from any mapping of sequences (e.g. JSON lists)."""
+    return {head: tuple(float(v) for v in tables[head]) for head in heads_of(tables)}
+
+
+def _common_heads(old_tables, new_tables):
+    heads = heads_of(old_tables)
+    if heads_of(new_tables) != heads:
+        raise ValueError(f"cannot migrate between action spaces ({'/'.join(heads)} -> "
+                         f"{'/'.join(heads_of(new_tables))}); train the new space from scratch")
+    return heads
 
 
 def resolve_layout(names=None, tables=None, version=None, dim=None, current=None):
@@ -134,7 +148,7 @@ def column_sources(old_names, old_tables, new_names, new_tables):
     if len(set(old_names)) != len(old_names) or len(set(new_names)) != len(new_names):
         raise ValueError("feature names must be unique")
     index = {name: i for i, name in enumerate(old_names)}
-    by_head = {head: [] for head in HEADS}  # old one-hot columns per head: (value, index)
+    by_head = {head: [] for head in _common_heads(old_tables, new_tables)}  # old one-hot columns per head: (value, index)
     for i, name in enumerate(old_names):
         action = _action_column(name, old_tables)
         if action is not None:
@@ -161,7 +175,7 @@ def output_rows(old_tables, new_tables):
     """
     old_tables, new_tables = normalize_tables(old_tables), normalize_tables(new_tables)
     rows, shift, offset = [], [], 0
-    for head in HEADS:
+    for head in _common_heads(old_tables, new_tables):
         old, new = old_tables[head], new_tables[head]
         nearest = [_nearest(old, v) for v in new]
         copies = np.bincount(nearest, minlength=len(old))
@@ -217,7 +231,8 @@ def migrate_output(weight, bias, old_tables, new_tables):
     """Actor output layer `weight` [n_logits, hidden] and bias, rows re-mapped per head."""
     rows, shift = output_rows(old_tables, new_tables)
     weight, bias = np.asarray(weight), np.asarray(bias)
-    if weight.shape[0] != sum(len(normalize_tables(old_tables)[h]) for h in HEADS) + 2:
+    old = normalize_tables(old_tables)
+    if weight.shape[0] != sum(len(old[h]) for h in heads_of(old)) + 2:
         raise ValueError("output layer does not match the old action tables")
     return weight[rows].copy(), (bias[rows] + shift).astype(bias.dtype)
 
@@ -235,7 +250,7 @@ def lossy_changes(old_names, old_tables, new_names, new_tables):
         if _action_column(name, old_tables) is None and name not in new_set:
             reasons.append(f"feature {name!r} dropped")
     old_t, new_t = normalize_tables(old_tables), normalize_tables(new_tables)
-    for head in HEADS:
+    for head in _common_heads(old_t, new_t):
         nearest = {_nearest(old_t[head], v) for v in new_t[head]}
         for i, value in enumerate(old_t[head]):
             if i not in nearest:

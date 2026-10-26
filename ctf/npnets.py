@@ -1,60 +1,76 @@
-"""Numpy-only inference pieces (no torch): head layout, NumpyActor, NumpyGRUActor, RunningNorm."""
+"""Numpy-only inference pieces (no torch): head layout, NumpyActor, NumpyGRUActor, RunningNorm.
+
+Actors carry their action space (`space`: "bins" or "goal", see
+ctf/action_space.py) and its `head_sizes`; the module constants describe the
+default `bins` space.
+"""
 
 import struct
 
 import numpy as np
 
-from ctf.features import FEATURE_DIM, N_THROTTLE, N_TURN, _num
+from ctf import action_space as _spaces
+from ctf.features import FEATURE_DIM, N_HEADING, N_SPEED, N_THROTTLE, N_TURN, _num
 
 HEAD_SIZES = (N_THROTTLE, N_TURN, 2)
 N_LOGITS = sum(HEAD_SIZES)
 HEAD_STARTS = (0, N_THROTTLE, N_THROTTLE + N_TURN)
+GOAL_HEAD_SIZES = (N_HEADING, N_SPEED, 2)
 GRU_KEYS = ("W_in", "b_in", "W_ih", "b_ih", "W_hh", "b_hh", "W_out", "b_out")
 
 
-_PACK_ROW = struct.Struct(f"{FEATURE_DIM}f").pack
+_PACKERS = {FEATURE_DIM: struct.Struct(f"{FEATURE_DIM}f").pack}
 
 
 def rows_to_float32(rows):
-    """np.asarray(rows, dtype=np.float32) for lists of FEATURE_DIM floats, faster.
+    """np.asarray(rows, dtype=np.float32) for lists of equally long float rows, faster.
 
     struct's 'f' packing is the same C double -> float conversion; anything it
     rejects (wrong length, out of float32 range) goes through numpy instead.
     """
     if not rows:
         return np.asarray(rows, dtype=np.float32)
+    width = len(rows[0])
+    pack = _PACKERS.get(width)
+    if pack is None:
+        pack = _PACKERS[width] = struct.Struct(f"{width}f").pack
     try:
-        data = bytearray().join([_PACK_ROW(*row) for row in rows])
+        data = bytearray().join([pack(*row) for row in rows])
     except (struct.error, OverflowError, TypeError):
         return np.asarray(rows, dtype=np.float32)
-    return np.frombuffer(data, dtype=np.float32).reshape(len(rows), FEATURE_DIM)
+    return np.frombuffer(data, dtype=np.float32).reshape(len(rows), width)
 
 
-def sample_logits(logits, rng, greedy=False):
+def _starts(head_sizes):
+    return (0, head_sizes[0], head_sizes[0] + head_sizes[1])
+
+
+def sample_logits(logits, rng, greedy=False, head_sizes=HEAD_SIZES):
     """Return (actions int array [N,3], joint log-prob [N]) for a batch of logits.
 
     Elementwise steps and the (exact) maxima run on all heads at once; every
     per-head sum keeps its own reduction, so results match a head-by-head loop.
     """
+    head_starts = HEAD_STARTS if head_sizes == HEAD_SIZES else _starts(head_sizes)
     n = len(logits)
-    shifted = logits - np.repeat(np.maximum.reduceat(logits, HEAD_STARTS, axis=1), HEAD_SIZES, axis=1)
+    shifted = logits - np.repeat(np.maximum.reduceat(logits, head_starts, axis=1), head_sizes, axis=1)
     exp = np.exp(shifted)
     log_norm = np.log(np.stack([exp[:, a:a + s].sum(axis=1)
-                                for a, s in zip(HEAD_STARTS, HEAD_SIZES)], axis=1))
+                                for a, s in zip(head_starts, head_sizes)], axis=1))
     if not greedy:
         # One draw for all heads: the same numbers, in the same order, as one (N, size)
         # draw per head.
-        gumbel = -np.log(-np.log(rng.random(n * N_LOGITS) + 1e-12) + 1e-12)
-    actions = np.empty((n, len(HEAD_SIZES)), dtype=np.int64)
-    for k, (a, s) in enumerate(zip(HEAD_STARTS, HEAD_SIZES)):
+        gumbel = -np.log(-np.log(rng.random(n * sum(head_sizes)) + 1e-12) + 1e-12)
+    actions = np.empty((n, len(head_sizes)), dtype=np.int64)
+    for k, (a, s) in enumerate(zip(head_starts, head_sizes)):
         head = logits[:, a:a + s]
         if greedy:
             actions[:, k] = head.argmax(axis=1)
         else:
             actions[:, k] = (head + gumbel[n * a:n * (a + s)].reshape(n, s)).argmax(axis=1)
-    chosen = shifted[np.arange(n)[:, None], actions + HEAD_STARTS] - log_norm  # log-softmax
+    chosen = shifted[np.arange(n)[:, None], actions + head_starts] - log_norm  # log-softmax
     logp = np.zeros(n, dtype=np.float32)
-    for k in range(len(HEAD_SIZES)):
+    for k in range(len(head_sizes)):
         logp += chosen[:, k]
     return actions, logp
 
@@ -78,10 +94,12 @@ class NumpyActor:
     recurrent = False
     arch = "mlp"
 
-    def __init__(self, weights, obs_mean, obs_std):
+    def __init__(self, weights, obs_mean, obs_std, space="bins"):
         self.weights = weights
         self.obs_mean = np.asarray(obs_mean, dtype=np.float32)
         self.obs_std = np.asarray(obs_std, dtype=np.float32)
+        self.space = space
+        self.head_sizes = _spaces.get(space).head_sizes
 
     def normalize(self, x):
         return np.clip((x - self.obs_mean) / self.obs_std, -5.0, 5.0)
@@ -95,7 +113,7 @@ class NumpyActor:
 
     def sample(self, x, rng, greedy=False):
         """Return (actions int array [N,3], joint log-prob [N])."""
-        return sample_logits(self.logits(x), rng, greedy)
+        return sample_logits(self.logits(x), rng, greedy, self.head_sizes)
 
 
 def _sigmoid(x):
@@ -116,13 +134,15 @@ class NumpyGRUActor:
     recurrent = True
     arch = "gru"
 
-    def __init__(self, weights, obs_mean, obs_std):
+    def __init__(self, weights, obs_mean, obs_std, space="bins"):
         missing = [key for key in GRU_KEYS if key not in weights]
         if missing:
             raise ValueError(f"GRU weights missing {missing}")
         self.weights = {key: np.asarray(weights[key], dtype=np.float32) for key in GRU_KEYS}
         self.obs_mean = np.asarray(obs_mean, dtype=np.float32)
         self.obs_std = np.asarray(obs_std, dtype=np.float32)
+        self.space = space
+        self.head_sizes = _spaces.get(space).head_sizes
         self.hidden_size = self.weights["W_hh"].shape[0]
         if self.weights["W_hh"].shape != (self.hidden_size, 3 * self.hidden_size):
             raise ValueError("W_hh must be [H, 3H]")
@@ -150,15 +170,15 @@ class NumpyGRUActor:
     def step_sample(self, x, h, rng, greedy=False):
         """Return (actions [N,3], joint log-prob [N], new hidden [N,H])."""
         logits, h_new = self.step(x, h)
-        actions, logp = sample_logits(logits, rng, greedy)
+        actions, logp = sample_logits(logits, rng, greedy, self.head_sizes)
         return actions, logp, h_new
 
 
-def make_actor(weights, obs_mean, obs_std):
+def make_actor(weights, obs_mean, obs_std, space="bins"):
     """NumpyActor for a list of (W, b) layers, NumpyGRUActor for a dict of GRU weights."""
     if isinstance(weights, dict):
-        return NumpyGRUActor(weights, obs_mean, obs_std)
-    return NumpyActor(weights, obs_mean, obs_std)
+        return NumpyGRUActor(weights, obs_mean, obs_std, space)
+    return NumpyActor(weights, obs_mean, obs_std, space)
 
 
 class PolicyMemories:
@@ -168,11 +188,18 @@ class PolicyMemories:
     any key whose memory starts fresh; `act` samples and advances the state. The
     hidden state advances only when a key is encoded, i.e. on that player's
     alive decisions, exactly as in a deployed per-player process.
+
+    `memory_factory` defaults to the actor's action space memory; `act_engine`
+    also decodes the sampled indices into engine actions (the goal space needs the
+    observations for its controller).
     """
 
-    def __init__(self, actor, keys, encode, memory_factory):
+    def __init__(self, actor, keys, encode, memory_factory=None):
         self.actor = actor
         self.encode = encode
+        self.space = _spaces.get(getattr(actor, "space", "bins"))
+        if memory_factory is None:
+            memory_factory = self.space.memory
         self.memories = {key: memory_factory() for key in keys}
         self.hidden = ({key: np.zeros(actor.hidden_size, dtype=np.float32) for key in keys}
                        if actor.recurrent else None)
@@ -186,8 +213,7 @@ class PolicyMemories:
             rows.append(self.encode(observation, memory))
         return rows_to_float32(rows)
 
-    def act(self, keys, x, rng, greedy=False):
-        """Sample actions [N,3] for encoded rows `x`; records them in each memory."""
+    def _sample(self, keys, x, rng, greedy):
         if self.hidden is None:
             actions, _ = self.actor.sample(x, rng, greedy)
         else:
@@ -195,9 +221,27 @@ class PolicyMemories:
             actions, _, h_new = self.actor.step_sample(x, h, rng, greedy)
             for key, row in zip(keys, h_new):
                 self.hidden[key] = row
+        return actions
+
+    def act(self, keys, x, rng, greedy=False):
+        """Sample `bins` actions [N,3] for encoded rows `x`; records them in each memory."""
+        if self.space.name != "bins":
+            raise ValueError("act() is for the bins action space; use act_engine()")
+        actions = self._sample(keys, x, rng, greedy)
         for key, (t, r, j) in zip(keys, actions.tolist()):
             self.memories[key].set_action(t, r, j)
         return actions
+
+    def act_engine(self, keys, x, rng, greedy, observations):
+        """Sample head indices [N,3] for rows `x` and decode them into engine actions.
+
+        Returns (indices, [(throttle, turn, jump), ...]); every memory records its action.
+        """
+        actions = self._sample(keys, x, rng, greedy)
+        apply = self.space.apply
+        engine = [apply(self.memories[key], action, observation)
+                  for key, action, observation in zip(keys, actions.tolist(), observations)]
+        return actions, engine
 
 
 class RunningNorm:

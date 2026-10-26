@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 
+from ctf import action_space as A
 from ctf import features as F
 from ctf.npnets import PolicyMemories, make_actor, memory_is_fresh, rows_to_float32
 from ctf.policies import SCRIPTED, ScriptedTeam, _silent, load_decide
@@ -36,7 +37,7 @@ class PolicyTeam:
     def __init__(self, actor, sphere_ids, rng, greedy=False):
         self.actor = actor
         self.ids = list(sphere_ids)
-        self.state = PolicyMemories(actor, self.ids, F.encode, F.PlayerMemory)
+        self.state = PolicyMemories(actor, self.ids, F.encode)
         self.memories = self.state.memories
         self.rng = rng
         self.greedy = greedy
@@ -45,10 +46,10 @@ class PolicyTeam:
         ids = [sid for sid in self.ids if sid in observations]
         if not ids:
             return {}
-        x = self.state.encode_batch(ids, [documented(observations[sid]) for sid in ids])
-        actions = self.state.act(ids, x, self.rng, greedy=self.greedy)
-        return {sid: (F.THROTTLE_VALUES[t], F.TURN_VALUES[r], bool(j))
-                for sid, (t, r, j) in zip(ids, actions.tolist())}
+        docs = [documented(observations[sid]) for sid in ids]
+        x = self.state.encode_batch(ids, docs)
+        _, engine = self.state.act_engine(ids, x, self.rng, self.greedy, docs)
+        return dict(zip(ids, engine))
 
 
 _POLICY_CACHE = {}
@@ -67,33 +68,15 @@ def make_opponent(spec, sphere_ids, rng, current=None):
     return ScriptedTeam(spec, sphere_ids)
 
 
-def _nearest_index(table, value):
-    try:
-        value = float(value)
-    except (TypeError, ValueError):
-        value = 0.0
-    value = -1.0 if value < -1.0 else 1.0 if value > 1.0 else value
-    best, best_d = 0, abs(table[0] - value)
-    for i in range(1, len(table)):
-        d = abs(table[i] - value)
-        if d < best_d:
-            best, best_d = i, d
-    return best
-
-
 def _silenced(decide):
     decide.__globals__["print"] = _silent
     return decide
 
 
-def teacher_label(decide, observation):
-    """A scripted teacher's action for this documented observation, as bin indices."""
-    try:
-        action = decide(observation)
-        return (_nearest_index(F.THROTTLE_VALUES, action[0]),
-                _nearest_index(F.TURN_VALUES, action[1]), 1 if action[2] else 0)
-    except Exception:
-        return None
+def teacher_label(decide, observation, space=A.BINS):
+    """A scripted teacher's action for this documented observation, as head indices of `space`
+    (bins: nearest throttle/turn bins; goal: its commanded or projected goal)."""
+    return space.teacher_label(decide, observation)
 
 
 def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, hidden_every=0,
@@ -105,8 +88,14 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
 
     With `teacher` (a scripted bot name or path), every learner player has its own
     shadow instance of the teacher, which sees the same documented observation and
-    labels the action it would take (rounded to the action bins): `teacher_actions`
-    [T, units, 3, 3] and `teacher_valid` [T, units, 3]. The teacher never acts.
+    labels the action it would take, projected onto the actor's action space (see
+    ctf/action_space.py): `teacher_actions` [T, units, 3, 3] and `teacher_valid`
+    [T, units, 3]. The teacher never acts; in the goal space its record of its own
+    last throttle is replaced by the executed one (`action_space.sync_teacher`).
+
+    The actor's action space (`actor.space`) sets the feature layout, the player
+    memories and how sampled indices become engine actions; `actions` holds the
+    sampled head indices.
 
     For a recurrent actor the result also has `resets` [T, units, 3] (hidden state
     zeroed before this decision) and the stored states `h0` [K, H] with their
@@ -114,7 +103,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     decision whose index since the last reset is a multiple of `hidden_every`.
     """
     rng = np.random.default_rng(seed)
-    T, D = max_ticks, F.FEATURE_DIM
+    space = A.get(getattr(actor, "space", "bins"))
+    T, D = max_ticks, space.feature_dim
 
     matches, opponents = [], []
     units = []  # dicts: match index, tracker, sphere ids, memories, wipe ticks, job
@@ -137,7 +127,7 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 "match": m_index,
                 "tracker": RewardTracker(match, team, reward_weights),
                 "ids": [s.id for s in mine],
-                "memories": [F.PlayerMemory() for _ in mine],
+                "memories": [space.memory() for _ in mine],
                 "wipes": [int(rng.integers(1, T)) if rng.random() < memory_wipe_prob else -1
                           for _ in mine],
                 "job": dict(job, side="red" if team == red else "blue"),
@@ -166,7 +156,7 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     started = time.perf_counter()
     for t in range(T):
         all_obs = [match.observe() for match in matches]
-        rows, unit_index, slot_index = [], [], []
+        rows, docs, unit_index, slot_index = [], [], [], []
         for u, unit in enumerate(units):
             unit["tracker"].before()
             observations = all_obs[unit["match"]]
@@ -187,8 +177,9 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                     since_reset[u, k] += 1
                 doc = documented(observation)
                 rows.append(F.encode(doc, unit["memories"][k]))
+                docs.append(doc)
                 if teacher:
-                    label = teacher_label(unit["teachers"][k], doc)
+                    label = space.teacher_label(unit["teachers"][k], doc)
                     if label is not None:
                         teacher_actions[t, u, k] = label
                         teacher_valid[t, u, k] = True
@@ -212,11 +203,14 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 actions[t, ui, si] = chosen
                 logp[t, ui, si] = chosen_logp
                 alive[t, ui, si] = True
-            for u, k, (a_t, a_r, a_j) in zip(unit_index, slot_index, chosen.tolist()):
+            apply = space.apply
+            sync = teacher and space is A.GOAL
+            for u, k, action, doc in zip(unit_index, slot_index, chosen.tolist(), docs):
                 unit = units[u]
-                unit["memories"][k].set_action(a_t, a_r, a_j)
-                step_actions[unit["match"]][unit["ids"][k]] = (
-                    F.THROTTLE_VALUES[a_t], F.TURN_VALUES[a_r], bool(a_j))
+                engine = apply(unit["memories"][k], action, doc)
+                step_actions[unit["match"]][unit["ids"][k]] = engine
+                if sync:
+                    A.sync_teacher(unit["teachers"][k], engine[0])
         for m_index, match in enumerate(matches):
             if opponents[m_index] is not None:
                 step_actions[m_index].update(opponents[m_index].act(all_obs[m_index]))
@@ -268,7 +262,7 @@ def worker_main(conn, worker_id):
             break
         try:
             weights, mean, std, jobs, config = message
-            actor = make_actor(weights, mean, std)
+            actor = make_actor(weights, mean, std, config.get("action_space", "bins"))
             data = collect(actor, jobs, config["reward_weights"], config["max_ticks"],
                            config["seed"], config.get("memory_wipe_prob", 0.0),
                            config.get("hidden_every", 0), config.get("teacher"))

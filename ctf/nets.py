@@ -1,7 +1,8 @@
 """Actor/critic networks (torch for training, numpy for rollouts and export).
 
 The actor is an MLP over normalized features with three categorical heads:
-throttle (N_THROTTLE), turn (N_TURN) and jump (2); `GRUActor` is the optional
+throttle (N_THROTTLE), turn (N_TURN) and jump (2), or heading, speed and jump in
+the goal action space (ctf/action_space.py); `GRUActor` is the optional
 recurrent variant (`--arch gru`). The critic is a separate, wider MLP used only
 in training. Both see only one player's own features.
 """
@@ -11,8 +12,8 @@ import torch
 from torch import nn
 
 from ctf.features import FEATURE_DIM
-from ctf.npnets import (HEAD_SIZES, N_LOGITS, NumpyActor, NumpyGRUActor,  # noqa: F401
-                        RunningNorm)
+from ctf.npnets import (GOAL_HEAD_SIZES, HEAD_SIZES, N_LOGITS, NumpyActor,  # noqa: F401
+                        NumpyGRUActor, RunningNorm)
 
 
 def _layer(n_in, n_out, gain):
@@ -23,13 +24,13 @@ def _layer(n_in, n_out, gain):
 
 
 class Actor(nn.Module):
-    def __init__(self, hidden=(128, 128)):
+    def __init__(self, hidden=(128, 128), n_in=FEATURE_DIM, n_logits=N_LOGITS):
         super().__init__()
-        layers, n_in = [], FEATURE_DIM
+        layers = []
         for n_out in hidden:
             layers += [_layer(n_in, n_out, 2 ** 0.5), nn.Tanh()]
             n_in = n_out
-        layers.append(_layer(n_in, N_LOGITS, 0.01))
+        layers.append(_layer(n_in, n_logits, 0.01))
         self.net = nn.Sequential(*layers)
         self.hidden = tuple(hidden)
 
@@ -44,12 +45,12 @@ class GRUActor(nn.Module):
     NumpyGRUActor for the matching numpy step used in rollouts and export.
     """
 
-    def __init__(self, hidden=(128, 128)):
+    def __init__(self, hidden=(128, 128), n_features=FEATURE_DIM, n_logits=N_LOGITS):
         super().__init__()
         if len(hidden) != 2:
             raise ValueError("GRU actor takes --hidden H1 HG (input layer, GRU size)")
         n_in, n_gru = hidden
-        self.inp = _layer(FEATURE_DIM, n_in, 2 ** 0.5)
+        self.inp = _layer(n_features, n_in, 2 ** 0.5)
         self.gru = nn.GRU(n_in, n_gru, batch_first=True)
         for name, param in self.gru.named_parameters():
             if name.startswith("weight_hh"):
@@ -59,7 +60,7 @@ class GRUActor(nn.Module):
                 nn.init.xavier_uniform_(param.data)
             else:
                 nn.init.zeros_(param.data)
-        self.out = _layer(n_gru, N_LOGITS, 0.01)
+        self.out = _layer(n_gru, n_logits, 0.01)
         self.hidden = tuple(hidden)
         self.hidden_size = n_gru
 
@@ -75,20 +76,20 @@ class GRUActor(nn.Module):
         return h.squeeze(0)
 
 
-def build_actor(arch, hidden):
+def build_actor(arch, hidden, n_features=FEATURE_DIM, head_sizes=HEAD_SIZES):
     if arch == "gru":
-        return GRUActor(hidden)
+        return GRUActor(hidden, n_features, sum(head_sizes))
     if arch == "mlp":
-        return Actor(hidden)
+        return Actor(hidden, n_features, sum(head_sizes))
     raise ValueError(f"unknown actor arch {arch!r}")
 
 
 class Critic(nn.Module):
     """Two outputs: [0] normalized shaped return, [1] undiscounted win probability (logit-free)."""
 
-    def __init__(self, hidden=(256, 256)):
+    def __init__(self, hidden=(256, 256), n_in=FEATURE_DIM):
         super().__init__()
-        layers, n_in = [], FEATURE_DIM
+        layers = []
         for n_out in hidden:
             layers += [_layer(n_in, n_out, 2 ** 0.5), nn.Tanh()]
             n_in = n_out
@@ -99,15 +100,15 @@ class Critic(nn.Module):
         return self.net(x)
 
 
-def split_heads(logits):
-    a, b = HEAD_SIZES[0], HEAD_SIZES[0] + HEAD_SIZES[1]
+def split_heads(logits, head_sizes=HEAD_SIZES):
+    a, b = head_sizes[0], head_sizes[0] + head_sizes[1]
     return logits[..., :a], logits[..., a:b], logits[..., b:]
 
 
-def log_prob_entropy(logits, actions):
-    """Joint log-probability of (throttle, turn, jump) indices and summed entropy."""
+def log_prob_entropy(logits, actions, head_sizes=HEAD_SIZES):
+    """Joint log-probability of the three heads' indices and summed entropy."""
     logp, entropy = 0.0, 0.0
-    for head, index in zip(split_heads(logits), actions.unbind(-1)):
+    for head, index in zip(split_heads(logits, head_sizes), actions.unbind(-1)):
         log_softmax = torch.log_softmax(head, dim=-1)
         logp = logp + log_softmax.gather(-1, index.long().unsqueeze(-1)).squeeze(-1)
         entropy = entropy - (log_softmax.exp() * log_softmax).sum(-1)
