@@ -351,7 +351,7 @@ class PlayerMemory:
         else:
             self.trail = [(x, y, 0.0)]
         if (gap == 1 and speed < 1.0
-                and abs(THROTTLE_VALUES[self.prev_throttle]) >= STUCK_THROTTLE):
+                and abs(THROTTLE_VALUES[self.prev_throttle]) * 6.0 > 0.05):
             self.stuck += 1
         else:
             self.stuck = 0
@@ -607,7 +607,8 @@ def encode(observation, memory):
         remaining = 0.0
         for d_key, d in memory.deaths.items():
             if d_key[0] == p and 0 <= tick - d[2] <= RESPAWN_TICKS:
-                remaining = max(remaining, (RESPAWN_TICKS - (tick - d[2])) / RESPAWN_TICKS)
+                # first alive callback is at death tick + RESPAWN_TICKS + 1
+                remaining = max(remaining, (RESPAWN_TICKS + 1 - (tick - d[2])) / RESPAWN_TICKS)
         team.append(remaining)
     nearest, count = 2.0, 0.0
     if memory.own_home is not None:

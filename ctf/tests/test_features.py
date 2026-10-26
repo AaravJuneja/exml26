@@ -175,3 +175,18 @@ def test_close_bumps_block_their_own_cells():
     m._add_bump(1.2, 0.0)  # deduplicated as a point, but in a different cell
     assert m.grid[m._cell(1.0, 0.0)] == F.BLOCKED
     assert m.grid[m._cell(1.2, 0.0)] == F.BLOCKED
+
+
+def test_teammate_respawn_countdown_ends_at_first_alive_tick():
+    """A teammate dying at tick d first acts again at d + 61: countdown > 0 through d + 60."""
+    memory = F.PlayerMemory()
+    base = {"self": {"x": -80.0, "y": 0.0, "speed": 0.0, "player": 1, "team": "blue", "id": 3},
+            "visible_enemies": [], "own_flag": {"x": -90.0, "y": 0.0, "carried_by": -1,
+                                                "at_home": True},
+            "other_flags": [], "score": {}, "sonar_receive": []}
+    death = {"player": 2, "team": "blue", "tick": 100, "x": 0.0, "y": 0.0, "reason": "player"}
+    index = F.FEATURE_NAMES.index("team.mate_a_respawn")  # player 1's first mate is player 2
+    values = {}
+    for tick in (100, 160, 161):
+        values[tick] = F.encode(dict(base, tick=tick, death_messages=[death]), memory)[index]
+    assert values[100] > 1.0 - 1e-9 and values[160] > 0.0 and values[161] == 0.0

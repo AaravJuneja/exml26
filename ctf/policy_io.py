@@ -12,7 +12,8 @@ action_tables, notes) and the actor weights, by `meta["arch"]`:
 
 Files written before feature version 5 have no feature names; their layout is
 reconstructed from ctf/feature_layouts.py. An MLP file built for another layout
-is migrated to the current one on load (see `feature_layouts.migrate_mlp`).
+can be migrated explicitly (`load_policy(..., migrate=True)` or tools/migrate_policy.py);
+by default a different layout is an error, so old snapshots are never silently altered.
 """
 
 import json
@@ -106,7 +107,7 @@ def migrate_policy_arrays(weights, mean, std, meta):
     return weights, mean, std, meta
 
 
-def load_policy(path, migrate=True):
+def load_policy(path, migrate=False):
     """Return (NumpyActor or NumpyGRUActor, meta dict).
 
     With `migrate`, an MLP built for an older feature layout is migrated in memory

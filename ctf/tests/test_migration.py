@@ -117,7 +117,8 @@ def _head_probs(logits, tables):
 def test_migration_preserves_logits_and_probabilities(fill):
     rng = np.random.default_rng(1)
     state = _state(V4_NAMES, V4_TABLES, seed=2)
-    new = migrate_state(state, V4_NAMES, V4_TABLES, MOVED_NAMES, WIDE_TABLES)
+    new = migrate_state(state, V4_NAMES, V4_TABLES, MOVED_NAMES, WIDE_TABLES,
+                        allow_lossy=True)
     assert new["feature_names"] == list(MOVED_NAMES)
     filler = (lambda n: np.zeros(n)) if fill == "zero" else (lambda n: rng.normal(0, 3, n))
     old_mean = state["norm"]["mean"]
@@ -186,7 +187,7 @@ def test_migration_round_trips(target):
                      else (WIDE_NAMES, WIDE_TABLES))
     state = _state(V4_NAMES, V4_TABLES, seed=5)
     there = migrate_state(state, V4_NAMES, V4_TABLES, names, tables)
-    back = migrate_state(there, names, tables, V4_NAMES, V4_TABLES)
+    back = migrate_state(there, names, tables, V4_NAMES, V4_TABLES, allow_lossy=True)
     assert back["feature_names"] == list(V4_NAMES)
     _assert_states_close(state, back)
     # Migrating to the same layout changes nothing.
@@ -206,7 +207,7 @@ def test_policy_migration_matches_checkpoint_migration_and_round_trips():
         assert np.allclose(b, reference["actor"][f"net.{k}.bias"].numpy(), atol=1e-6)
     assert np.allclose(mean, reference["norm"]["mean"])
     back, mean_b, std_b = L.migrate_mlp(new_layers, mean, new_std, WIDE_NAMES, WIDE_TABLES,
-                                        V4_NAMES, V4_TABLES)
+                                        V4_NAMES, V4_TABLES, allow_lossy=True)
     for (w0, b0), (w1, b1) in zip(layers, back):
         assert np.allclose(w0, w1, atol=1e-5) and np.allclose(b0, b1, atol=1e-5)
     assert np.allclose(mean_b, state["norm"]["mean"]) and np.allclose(std_b, std)
@@ -298,7 +299,7 @@ def test_v4_policy_file_migrates_on_load(tmp_path):
     assert "feature_names" not in meta and meta["feature_version"] == 4
     with pytest.raises(ValueError, match="different feature encoder"):
         load_policy(v4, migrate=False)
-    actor, meta = load_policy(v4)
+    actor, meta = load_policy(v4, migrate=True)
     assert meta["migrated_from"]["feature_version"] == 4
     assert meta["feature_names"] == list(F.FEATURE_NAMES)
     migrate_file(v4, tmp_path / "v5.npz")

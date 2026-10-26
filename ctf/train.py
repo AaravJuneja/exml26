@@ -193,7 +193,8 @@ def _input_layer(weights, width):
     return None
 
 
-def migrate_state(state, old_names, old_tables, new_names=None, new_tables=None):
+def migrate_state(state, old_names, old_tables, new_names=None, new_tables=None,
+                  allow_lossy=False):
     """Warm-start an MLP checkpoint state built for another feature layout / action tables.
 
     Input columns are matched by name (new columns: zero weights, identity
@@ -205,6 +206,9 @@ def migrate_state(state, old_names, old_tables, new_names=None, new_tables=None)
     new_names = F.FEATURE_NAMES if new_names is None else tuple(new_names)
     new_tables = L.normalize_tables(F.ACTION_TABLES if new_tables is None else new_tables)
     old_names, old_tables = tuple(old_names), L.normalize_tables(old_tables)
+    reasons = L.lossy_changes(old_names, old_tables, new_names, new_tables)
+    if reasons and not allow_lossy:
+        raise ValueError("lossy warm-start migration refused: " + "; ".join(reasons[:5]))
     sources = L.column_sources(old_names, old_tables, new_names, new_tables)
     norm = dict(state["norm"])
     mean, var = np.asarray(norm["mean"], np.float64), np.asarray(norm["var"], np.float64)

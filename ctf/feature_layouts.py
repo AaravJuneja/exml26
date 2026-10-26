@@ -227,11 +227,35 @@ def same_layout(names_a, tables_a, names_b, tables_b):
             and normalize_tables(tables_a) == normalize_tables(tables_b))
 
 
-def migrate_mlp(layers, mean, std, old_names, old_tables, new_names, new_tables):
+def lossy_changes(old_names, old_tables, new_names, new_tables):
+    """Reasons a migration would discard information (dropped columns or action values)."""
+    reasons = []
+    new_set = set(new_names)
+    for name in old_names:
+        if _action_column(name, old_tables) is None and name not in new_set:
+            reasons.append(f"feature {name!r} dropped")
+    old_t, new_t = normalize_tables(old_tables), normalize_tables(new_tables)
+    for head in HEADS:
+        nearest = {_nearest(old_t[head], v) for v in new_t[head]}
+        for i, value in enumerate(old_t[head]):
+            if i not in nearest:
+                reasons.append(f"{head} value {value} has no successor")
+    return reasons
+
+
+def migrate_mlp(layers, mean, std, old_names, old_tables, new_names, new_tables,
+                allow_lossy=False):
     """Migrate an MLP policy: `layers` [(W [n_in, n_out], b)], normalization mean/std.
 
-    Returns (layers, mean, std) for the new layout, with the input dtypes.
+    Returns (layers, mean, std) for the new layout, with the input dtypes. Only
+    refinements (added features, split action values) are exact; contractions are
+    refused unless `allow_lossy`, since merged logits are only approximately right.
+    Note: splitting action values preserves each original value's probability mass,
+    not the greedy action, so a migrated policy is a warm start, not a replica.
     """
+    reasons = lossy_changes(old_names, old_tables, new_names, new_tables)
+    if reasons and not allow_lossy:
+        raise ValueError("lossy migration refused: " + "; ".join(reasons[:5]))
     sources = column_sources(old_names, old_tables, new_names, new_tables)
     mean, std = np.asarray(mean), np.asarray(std)
     layers = [(np.asarray(w), np.asarray(b)) for w, b in layers]
