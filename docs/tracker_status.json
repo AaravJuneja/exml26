@@ -1,5 +1,5 @@
 {
- "summary": "Infrastructure is complete and reviewed:<ul><li>exact simulator</li><li>PPO trainer (~240M samples/h)</li><li>self-play league with PFSP and mirror self-play</li><li>single-file exporter, about 1 ms callbacks against the 30 ms limit</li><li>paired-seed evaluation harness</li><li>automatic held-out evaluation</li></ul>The first review found two real reward bugs, now fixed: death penalties disappeared after 200 deaths, and progress shaping could be farmed by dying. Shaping is now potential-based. M2 restarted as run <b>m2b</b> (learning to score against idle opponents). In progress: review round 2 plus Phase 2; five new scripted training opponents; a replay viewer.",
+ "summary": "<b>The policy is learning to score.</b> Run <b>m2e</b> reached 3.2 goals per match against idle opponents after 38M samples (about 10 minutes of training), with ~0.6 wall deaths per player. On held-out maps it beats idle 71% of the time; baseline is 0% so far, since it hasn't trained against real opponents yet (that's M3).<br><br>Since the last update:<ul><li>Review round 2 found and we fixed: a reward leak of the teammate carrier's position, critic drift (fixed with PopArt), and normalisation drift.</li><li>Your ramp fix is applied, and the engine is byte-identical to game-env.</li><li>A discounting side effect in the shaping (a per-tick bonus for idling far from the flag) was diagnosed and fixed; it had stalled two runs.</li><li>Added: a long-horizon win-objective option, a replay viewer (docs/viewer.html), and an exporter latency verdict.</li></ul>",
  "milestones": [
   {
    "id": "M0",
@@ -17,7 +17,7 @@
    "id": "M2",
    "title": "Learn to score vs idle (\u22658 captures/match, \u22642 wall deaths/player)",
    "state": "active",
-   "note": "m2a stopped (reward bugs); m2b running with fixed rewards"
+   "note": "m2e: 3.2 goals/match vs idle at 38M samples and climbing (gate: \u22658)"
   },
   {
    "id": "M3",
@@ -72,9 +72,9 @@
  ],
  "runs": [
   {
-   "name": "m2b",
+   "name": "m2e",
    "state": "running",
-   "description": "PPO from scratch vs idle opponents; MLP 128x128; potential-based route shaping 0.5 annealing to 0.1 over 300M samples; win bonus 1.0."
+   "description": "PPO from scratch vs idle opponents; MLP 128x128; exact potential route shaping (undiscounted differences), 0.5 annealing to 0.1; win bonus 1.0."
   }
  ],
  "updates": [
@@ -85,6 +85,10 @@
   {
    "time": "2026-10-25 23:45",
    "text": "Phase 1 reviewed (2 critical reward bugs fixed). Exporter (M1) done: bit-exact, ~1 ms callbacks. Evaluation harness done. League + mirror self-play added. m2b training."
+  },
+  {
+   "time": "2026-10-26 00:35",
+   "text": "M2 learning: 3.2 goals/match vs idle at 38M samples. Review round 2 fixes in. Replay viewer added. Idle-bonus shaping artifact found and fixed."
   }
  ]
 }
