@@ -200,7 +200,12 @@ class Trainer:
         self.rng = np.random.default_rng(args.seed)
         torch.set_num_threads(args.learner_threads)
         self.device = torch.device(args.device)
+        if args.burn_in < 0:  # auto: burn-in refreshes stale stored states (review finding)
+            args.burn_in = 16 if args.arch == "gru" else 0
         if args.arch == "gru":
+            if args.chunk % max(args.burn_in, 1) and args.burn_in:
+                print(f"warning: chunk {args.chunk} not a multiple of burn-in {args.burn_in}; "
+                      "hidden states will be stored more often (memory)", flush=True)
             if args.chunk < 1 or not 0 <= args.burn_in <= args.chunk:
                 raise ValueError("--arch gru needs --chunk >= 1 and 0 <= --burn-in <= --chunk")
         self.recurrent = args.arch == "gru"
@@ -575,9 +580,9 @@ def main(argv=None):
     p.add_argument("--hidden", type=int, nargs="+", default=[128, 128])
     p.add_argument("--chunk", type=int, default=64,
                    help="gru: decisions per training sequence")
-    p.add_argument("--burn-in", type=int, default=0,
+    p.add_argument("--burn-in", type=int, default=-1,
                    help="gru: decisions of the previous chunk replayed (no gradient) to refresh "
-                        "the stored start state under the current weights")
+                        "the stored start state under the current weights (-1: 16 for gru)")
     p.add_argument("--critic-hidden", type=int, nargs="+", default=[256, 256])
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--gamma", type=float, default=0.998)
