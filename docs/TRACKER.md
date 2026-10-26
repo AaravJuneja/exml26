@@ -12,6 +12,10 @@ Working log. The summary is `docs/tracker.html`.
   - update `tracker.html` at milestones and every ~3 h;
   - each phase is reviewed, with capped review rounds.
 
+## Repo housekeeping (26 Oct)
+- **`engine/`, `rpc/`, `main.py`** are byte-identical to the distributed `game-env` (the other session's optional hooks removed); 133 tests pass.
+- **Working rule:** all heavy work (tests, evaluations, replays, training) runs on the training machine.
+
 ## Infrastructure
 | Item | Status | Notes |
 |---|---|---|
