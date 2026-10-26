@@ -36,17 +36,19 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
+    """Two outputs: [0] normalized shaped return, [1] undiscounted win probability (logit-free)."""
+
     def __init__(self, hidden=(256, 256)):
         super().__init__()
         layers, n_in = [], FEATURE_DIM
         for n_out in hidden:
             layers += [_layer(n_in, n_out, 2 ** 0.5), nn.Tanh()]
             n_in = n_out
-        layers.append(_layer(n_in, 1, 1.0))
+        layers.append(_layer(n_in, 2, 1.0))
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
-        return self.net(x).squeeze(-1)
+        return self.net(x)
 
 
 def split_heads(logits):

@@ -30,7 +30,7 @@ DEFAULT_WEIGHTS = {
     "carrier_death": 0.25, # extra penalty for dying while carrying
     "flag_return": 0.2,    # the enemy carrier of our flag is eliminated (team)
     "shaping": 0.5,        # potential scale: Phi = -shaping * route_length / 180
-    "gamma": 0.998,        # must equal the trainer's discount for exact PBRS
+    "gamma": 1.0,          # discount inside the shaping term (see train --shaping-gamma)
 }
 
 

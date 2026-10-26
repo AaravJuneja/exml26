@@ -132,7 +132,7 @@ class Trainer:
         weights.update(json.loads(self.args.reward_weights))
         frac = self.progress_fraction()
         weights["shaping"] *= (1.0 - frac) + frac * self.args.progress_final
-        weights["gamma"] = self.args.gamma
+        weights["gamma"] = self.args.shaping_gamma
         return weights
 
     def entropy_coef(self):
@@ -183,8 +183,8 @@ class Trainer:
         new_mean, new_std = float(self.ret_norm.mean[0]), float(self.ret_norm.std[0])
         last = self.critic.net[-1]
         with torch.no_grad():
-            last.weight.mul_(old_std / new_std)
-            last.bias.mul_(old_std).add_(old_mean - new_mean).div_(new_std)
+            last.weight[0].mul_(old_std / new_std)
+            last.bias[0].mul_(old_std).add_(old_mean - new_mean).div_(new_std)
 
     def ppo_update(self, batch):
         args = self.args
@@ -198,22 +198,37 @@ class Trainer:
         x_all = torch.as_tensor(raw.reshape(T * E * 3, -1)[flat_index], device=self.device)
         x_all = torch.clamp((x_all - mean) / std, -5.0, 5.0)
         with torch.no_grad():
-            v_norm = torch.cat([self.critic(chunk) for chunk in torch.split(x_all, 65536)])
-        v_raw = (v_norm.cpu().numpy() * self.ret_norm.std[0] + self.ret_norm.mean[0])
+            heads = torch.cat([self.critic(chunk) for chunk in torch.split(x_all, 65536)])
+        heads = heads.cpu().numpy().astype(np.float64)
+        v_raw = heads[:, 0] * self.ret_norm.std[0] + self.ret_norm.mean[0]
         values = np.zeros(T * E * 3, dtype=np.float64)
         values[flat_index] = v_raw
         values = values.reshape(T, E * 3)
         adv = gae(batch["rewards"].reshape(T, E * 3), values, alive, args.gamma, args.lam)
         returns = (adv + values).reshape(-1)[flat_index]
         adv = adv.reshape(-1)[flat_index]
+
+        # Undiscounted win objective: reward 1 at the final tick of a won match.
+        win_values = np.zeros(T * E * 3, dtype=np.float64)
+        win_values[flat_index] = heads[:, 1]
+        win_values = win_values.reshape(T, E * 3)
+        win_rewards = np.zeros((T, E * 3), dtype=np.float32)
+        win_rewards[-1] = np.repeat(batch["won"].astype(np.float32), 3)
+        win_adv = gae(win_rewards, win_values, alive, 1.0, args.win_lam)
+        win_returns = (win_adv + win_values).reshape(-1)[flat_index]
+        win_adv = win_adv.reshape(-1)[flat_index]
         explained = 1.0 - np.var(returns - v_raw) / (np.var(returns) + 1e-8)
         old_mean, old_std = float(self.ret_norm.mean[0]), float(self.ret_norm.std[0])
         self.ret_norm.update(returns.reshape(-1, 1))
         self.popart_rescale(old_mean, old_std)
         ret_t = torch.as_tensor((returns - self.ret_norm.mean[0]) / self.ret_norm.std[0],
                                 dtype=torch.float32, device=self.device)
-        adv_t = torch.as_tensor((adv - adv.mean()) / (adv.std() + 1e-8),
-                                dtype=torch.float32, device=self.device)
+        combined = (adv - adv.mean()) / (adv.std() + 1e-8)
+        if args.win_coef:
+            combined = combined + args.win_coef * (win_adv - win_adv.mean()) / (win_adv.std() + 1e-8)
+            combined = (combined - combined.mean()) / (combined.std() + 1e-8)
+        adv_t = torch.as_tensor(combined, dtype=torch.float32, device=self.device)
+        win_t = torch.as_tensor(win_returns, dtype=torch.float32, device=self.device)
         act_t = torch.as_tensor(batch["actions"].reshape(T * E * 3, 3)[flat_index].astype(np.int64),
                                 device=self.device)
         old_logp = torch.as_tensor(batch["logp"].reshape(-1)[flat_index], device=self.device)
@@ -237,7 +252,9 @@ class Trainer:
                 surrogate = torch.min(ratio * adv_t[idx],
                                       torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv_t[idx])
                 pi_loss = -surrogate.mean()
-                v_loss = 0.5 * (self.critic(x_all[idx]) - ret_t[idx]).pow(2).mean()
+                out = self.critic(x_all[idx])
+                v_loss = 0.5 * (out[:, 0] - ret_t[idx]).pow(2).mean()
+                v_loss = v_loss + 0.5 * (out[:, 1] - win_t[idx]).pow(2).mean()
                 loss = pi_loss + args.vf_coef * v_loss - ent_coef * entropy.mean()
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -256,6 +273,7 @@ class Trainer:
         out = {k: float(np.mean(v)) if v else 0.0 for k, v in stats.items()}
         out.update({"explained_var": float(explained), "samples": int(n),
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
+                    "win_value_mean": float(heads[:, 1].mean()),
                     "adv_raw_std": float(adv.std())})
         return out
 
@@ -287,6 +305,7 @@ class Trainer:
                 batch = {key: np.concatenate([r[key] for r in results], axis=1)
                          for key in ("obs", "actions", "logp", "rewards", "alive")}
                 stats = [s for r in results for s in r["stats"]]
+                batch["won"] = np.array([s["result"] == "win" for s in stats])
                 self.record_results(stats)
                 learn = self.ppo_update(batch)
                 t2 = time.perf_counter()
@@ -385,6 +404,12 @@ def main(argv=None):
     p.add_argument("--target-kl", type=float, default=0.03)
     p.add_argument("--max-grad", type=float, default=0.5)
     p.add_argument("--anneal-samples", type=float, default=0.0)
+    p.add_argument("--win-coef", type=float, default=0.0,
+                   help="weight of the undiscounted win advantage added to the PPO advantage")
+    p.add_argument("--win-lam", type=float, default=0.995)
+    p.add_argument("--shaping-gamma", type=float, default=1.0,
+                   help="discount inside the shaping term; 1.0 avoids a per-tick bonus for idling "
+                        "far from the objective (negative potentials)")
     p.add_argument("--progress-final", type=float, default=0.2)
     p.add_argument("--reward-weights", default="{}")
     p.add_argument("--memory-wipe", type=float, default=0.02)
