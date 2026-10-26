@@ -80,7 +80,9 @@ Working log. The summary is `docs/tracker.html`.
 | v5 features (m5a, from m4c u~205) vs m4c | About equal or slightly better (balanced −2.7 vs −3.3; camper/guardian ~0.5). Held-out relay 17–21%. **Adopted v5.** |
 | Support potential 0.15 (m5b vs m5a, from m5a u210) | **Tie**: both flat at 15–20% wins vs relay/balanced. Kept (harmless). |
 | Kickstarting from relay, CE weight 1.0 over 150M (k1 vs m5b) | **Failed.** Collapsed to relay 2% (GD −9.1), guardian/camper 0%, goals per match 6.0 → 3.0. Agreement with relay only 17%; wall deaths 1.3 → 0.9. The noisy shadow-teacher labels (teacher memory desyncs because its actions are never executed) plus a CE weight that dominates PPO pull the policy away from competence. Stopped at u308. |
-| Light kickstarting (k2: CE weight 0.05 over 60M, from m5b u~691) | running |
+| Light kickstarting (k2: CE weight 0.05 over 60M, from m5b u~691) | **Failed too.** Relay 3% (GD −6.9), wall 1.8 per player at u68. Teacher labels in the bins action space hurt even at weight 0.05. Stopped. Kickstarting is parked until the plan-B action space exists. |
+| **Paired A/B: release (m4c u210) vs m5b u680**, 128 games per opponent | **No progress in ~10 h.** relay dGD +0.20 [−0.62, +1.02]; balanced −0.40 [−1.13, +0.31]; guardian **−0.77 [−1.33, −0.19]**; rusher −0.08. The focused relay/balanced curriculum stalled and lost mid-tier strength. The release remains the best model. |
+| g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |
 | _(old note)_ Support potential Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |
 | Release pipeline (`tools/release.py`) | Candidate m4a u70: audit/parity/latency PASS (p99 1.43 ms, max 5.6 ms; stress p99 1.2, max 10.2). Gauntlet seeds 5000–5031: 41% overall |
 

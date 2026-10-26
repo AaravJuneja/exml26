@@ -114,19 +114,24 @@
  ],
  "runs": [
   {
-   "name": "k1",
+   "name": "g1",
    "state": "running",
-   "description": "Kickstarting from relay (shadow teacher labels, CE weight 1.0 fading over 150M samples), from m5b weights; 5 workers."
+   "description": "Generalist league from m4c (the release lineage), v5: broad mix of all scripted styles + greedy snapshot pool + mirror; 9 workers."
+  },
+  {
+   "name": "k1",
+   "state": "stopped",
+   "description": "Kickstarting (CE 1.0) from relay: collapsed (relay 2%). Failed."
+  },
+  {
+   "name": "k2",
+   "state": "stopped",
+   "description": "Light kickstarting (CE 0.05): also degraded. Failed."
   },
   {
    "name": "m5b",
-   "state": "running",
-   "description": "Control: v5, 256x256, low entropy, \u03bb 0.995, defence + support potentials, greedy league pool; 5 workers."
-  },
-  {
-   "name": "m5a",
    "state": "stopped",
-   "description": "v5 mainline before consolidation; tied with m5b."
+   "description": "Focused relay/balanced curriculum: no better than the release after ~10 h (paired A/B)."
   }
  ],
  "updates": [
@@ -189,6 +194,10 @@
   {
    "time": "2026-10-26 17:30",
    "text": "Surveys done: plateau confirmed; both rank kickstarting from relay #1. k1 kickstarting run vs m5b control running. Repo cleaned, single main branch, front page + gallery. Plan B (heading/speed + controller) being built."
+  },
+  {
+   "time": "2026-10-26 19:00",
+   "text": "Kickstarting in the bins action space failed (k1, k2). Paired A/B: m5b \u2248 release (no progress in 10 h; worse vs guardian). Switched to the generalist league g1 from the release lineage; plan B (heading/speed action space) in development."
   }
  ]
 }
