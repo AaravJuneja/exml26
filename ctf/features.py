@@ -15,7 +15,8 @@ Frames
 
 import math
 
-THROTTLE_VALUES = (-1.0, -0.3, -0.1, -0.03, 0.0, 0.015, 0.025, 0.034, 0.05, 0.1, 0.3, 1.0)
+THROTTLE_VALUES = (-1.0, -0.3, -0.1, -0.05, -0.034, 0.0, 0.015, 0.025, 0.034, 0.037, 0.05,
+                   0.06, 0.1, 0.3, 1.0)
 TURN_VALUES = (-1.0, -0.6, -0.3, -0.1, 0.0, 0.1, 0.3, 0.6, 1.0)
 N_THROTTLE = len(THROTTLE_VALUES)
 N_TURN = len(TURN_VALUES)
@@ -48,9 +49,11 @@ ENEMY_DIM = 14
 BUMP_DIM = 3
 DANGER_DIM = 5
 FREE_DIM = len(RAY_ANGLES) + 3
+TEAM_DIM = 8
 ACTION_DIM = N_THROTTLE + N_TURN + 1
 FEATURE_DIM = (SELF_DIM + GAME_DIM + FLAG_DIM + ENEMY_SLOTS * ENEMY_DIM
-               + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + FREE_DIM + ACTION_DIM)
+               + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + FREE_DIM + TEAM_DIM
+               + ACTION_DIM)
 
 
 def _clip(value, low, high):
@@ -150,6 +153,7 @@ class PlayerMemory:
         self.prev_tick = None
         self.prev_own_flag = None
         self.flag_streak = 0
+        self.enemy_home_since = None
         self.side_known = False
         self.cached = None
         self.flag_velocity = (0.0, 0.0)
@@ -234,10 +238,16 @@ class PlayerMemory:
         own_flag = observation.get("own_flag") or {}
         if own_flag.get("at_home"):
             self.own_home = (_num(own_flag.get("x")), _num(own_flag.get("y")))
+        enemy_at_home = False
         for flag in observation.get("other_flags") or ():
             if flag.get("at_home"):
                 self.enemy_home = (_num(flag.get("x")), _num(flag.get("y")))
-                break
+                enemy_at_home = True
+            break
+        if not enemy_at_home:
+            self.enemy_home_since = None
+        elif self.enemy_home_since is None:
+            self.enemy_home_since = tick
         if self.own_home is not None:
             self.side = -1.0 if self.own_home[0] > 0 else 1.0
             self.side_known = True
@@ -495,6 +505,46 @@ def encode(observation, memory):
                 if grid[row + col] == FREE:
                     known += 1
     out += (distance / RAY_RANGE, blocked, known / 25.0)
+
+    # Team block: which teammate carries, teammates' respawn countdowns, enemies near our
+    # home, closing speed on our stolen flag, and how long the enemy flag has sat at home.
+    # Global ids are allocated per team in player order, so id - (player - 1) is the
+    # team's first id (documented `id`/`player` fields of our own state).
+    first_id = (my_id if isinstance(my_id, int) else 0) - (player - 1)
+    mates = [p for p in (1, 2, 3) if p != player]
+    carrier_player = -1
+    if enemy_flag is not None:
+        carrier = enemy_flag.get("carried_by", -1)
+        if isinstance(carrier, int) and carrier not in (-1, my_id) and 0 <= carrier - first_id <= 2:
+            carrier_player = carrier - first_id + 1
+    team = [1.0 if carrier_player == p else 0.0 for p in mates]
+    for p in mates:
+        remaining = 0.0
+        for d_key, d in memory.deaths.items():
+            if d_key[0] == p and 0 <= tick - d[2] <= RESPAWN_TICKS:
+                remaining = max(remaining, (RESPAWN_TICKS - (tick - d[2])) / RESPAWN_TICKS)
+        team.append(remaining)
+    nearest, count = 2.0, 0.0
+    if memory.own_home is not None:
+        hx, hy = memory.own_home
+        for record in memory.enemies.values():
+            d = math.hypot(record[1] - hx, record[2] - hy)
+            nearest = min(nearest, d / 60.0)
+            if d < 20.0:
+                count += 1.0
+    team += (nearest, count / 3.0)
+    closing = 0.0
+    if own_flag.get("carried_by", -1) != -1:
+        norm = math.hypot(fdx, fdy)
+        if norm > 1e-6:
+            closing = (fdx * (fvx - vx) + fdy * (fvy - vy)) / norm / 18.0
+            closing = -2.0 if closing < -2.0 else 2.0 if closing > 2.0 else closing
+    waited = 0.0
+    if memory.enemy_home_since is not None:
+        waited = (tick - memory.enemy_home_since) / 100.0
+        waited = 2.0 if waited > 2.0 else waited
+    team += (closing, waited)
+    out += team
 
     action = [0.0] * ACTION_DIM
     action[memory.prev_throttle] = 1.0

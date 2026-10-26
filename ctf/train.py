@@ -216,6 +216,58 @@ def widen_mlp(weights, new_hidden, rng, noise=1e-4):
     return out
 
 
+V3_THROTTLE = (-1.0, -0.3, -0.1, -0.03, 0.0, 0.015, 0.025, 0.034, 0.05, 0.1, 0.3, 1.0)
+V3_DIM, V3_BASE = 180, 158  # v3: 158 base features (incl. rays) then 22 previous-action
+
+
+def migrate_v3_to_v4(state):
+    """Warm-start a v3 checkpoint (180 features, 12 throttle bins) in the v4 layout.
+
+    v4 inserts the team block after the rays and refines the throttle bins. Each new
+    throttle bin inherits the input column and output row of the nearest v3 bin; output
+    rows that are duplicated get -log(copies) on their bias, so the action distribution
+    over the original values is preserved.
+    """
+    nearest = [min(range(len(V3_THROTTLE)), key=lambda i: abs(V3_THROTTLE[i] - v))
+               for v in F.THROTTLE_VALUES]
+    copies = np.bincount(nearest, minlength=len(V3_THROTTLE))
+    column = list(range(V3_BASE)) + [None] * F.TEAM_DIM
+    column += [V3_BASE + i for i in nearest]
+    column += [V3_BASE + len(V3_THROTTLE) + t for t in range(F.N_TURN)]
+    column += [V3_DIM - 1]
+    assert len(column) == F.FEATURE_DIM
+    rows = nearest + [len(V3_THROTTLE) + t for t in range(F.N_TURN + 2)]
+
+    def widen_input(weights):
+        out, done = {}, False
+        for name, tensor in weights.items():
+            if not done and tensor.dim() == 2 and tensor.shape[1] == V3_DIM:
+                wide = tensor.new_zeros(tensor.shape[0], F.FEATURE_DIM)
+                for j, i in enumerate(column):
+                    if i is not None:
+                        wide[:, j] = tensor[:, i]
+                out[name], done = wide, True
+            else:
+                out[name] = tensor
+        return out
+
+    actor = widen_input(state["actor"])
+    last = max(int(k.split(".")[1]) for k in actor if k.startswith("net."))
+    w, b = actor[f"net.{last}.weight"], actor[f"net.{last}.bias"]
+    index = torch.as_tensor(rows, device=w.device)
+    correction = torch.as_tensor([np.log(copies[i]) for i in nearest] + [0.0] * (F.N_TURN + 2),
+                                 dtype=b.dtype, device=b.device)
+    actor[f"net.{last}.weight"] = w[index].clone()
+    actor[f"net.{last}.bias"] = b[index].clone() - correction
+    norm = dict(state["norm"])
+    mean, var = np.zeros(F.FEATURE_DIM), np.ones(F.FEATURE_DIM)
+    for j, i in enumerate(column):
+        if i is not None:
+            mean[j], var[j] = norm["mean"][i], norm["var"][i]
+    norm.update(mean=mean, var=var)
+    return dict(state, actor=actor, critic=widen_input(state["critic"]), norm=norm)
+
+
 def parse_mix(text):
     mix = []
     for part in text.split(","):
@@ -288,7 +340,10 @@ class Trainer:
             if not weights_only:
                 raise ValueError(f"{path} uses {old_dim} features; resume needs {F.FEATURE_DIM}"
                                  " (use --init to warm-start with feature surgery)")
-            state = expand_features(state, old_dim)
+            if old_dim == V3_DIM:
+                state = migrate_v3_to_v4(state)
+            else:
+                state = expand_features(state, old_dim)
         if weights_only and self.args.arch == "mlp":
             # Net2WiderNet when the requested network is wider than the checkpoint.
             actor_hidden = [t.shape[0] for k, t in sorted(state["actor"].items())

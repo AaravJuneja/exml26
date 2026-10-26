@@ -163,3 +163,38 @@ def test_net2wider_preserves_function():
     c_small, c_big = Critic((16, 16)), Critic((48, 48))
     c_big.load_state_dict(widen_mlp(c_small.state_dict(), (48, 48), np.random.default_rng(1), 0.0))
     assert torch.allclose(c_small(x), c_big(x), atol=1e-5)
+
+
+def test_v3_to_v4_migration_preserves_action_distribution():
+    """Probabilities of the original throttle values are preserved when duplicates are merged."""
+    import torch
+
+    from ctf import features as F
+    from ctf.train import V3_DIM, V3_BASE, V3_THROTTLE, migrate_v3_to_v4
+
+    torch.manual_seed(0)
+    old = torch.nn.Sequential(torch.nn.Linear(V3_DIM, 16), torch.nn.Tanh(), torch.nn.Linear(16, 23))
+    state = {"actor": {f"net.{k}": v.detach().clone() for k, v in
+                       {"0.weight": old[0].weight, "0.bias": old[0].bias,
+                        "2.weight": old[2].weight, "2.bias": old[2].bias}.items()},
+             "critic": {}, "norm": {"mean": np.zeros(V3_DIM), "var": np.ones(V3_DIM), "count": 1.0}}
+    new = migrate_v3_to_v4(state)
+    x_old = torch.randn(5, V3_DIM)
+    x_old[:, V3_BASE:] = 0
+    x_old[:, V3_BASE + 3] = 1.0          # previous throttle -0.03 (v3)
+    x_new = torch.zeros(5, F.FEATURE_DIM)
+    x_new[:, :V3_BASE] = x_old[:, :V3_BASE]
+    x_new[:, V3_BASE + F.TEAM_DIM + F.THROTTLE_VALUES.index(-0.034)] = 1.0
+    h_old = torch.tanh(x_old @ old[0].weight.T + old[0].bias)
+    h_new = torch.tanh(x_new @ new["actor"]["net.0.weight"].T + new["actor"]["net.0.bias"])
+    assert torch.allclose(h_old, h_new, atol=1e-5)
+    logits_old = h_old @ old[2].weight.T + old[2].bias
+    logits_new = h_new @ new["actor"]["net.2.weight"].T + new["actor"]["net.2.bias"]
+    p_old = torch.softmax(logits_old[:, :12], -1)
+    p_new = torch.softmax(logits_new[:, :F.N_THROTTLE], -1)
+    nearest = [min(range(12), key=lambda i: abs(V3_THROTTLE[i] - v)) for v in F.THROTTLE_VALUES]
+    merged = torch.zeros_like(p_old)
+    for j, i in enumerate(nearest):
+        merged[:, i] += p_new[:, j]
+    assert torch.allclose(merged, p_old, atol=1e-5)
+    assert torch.allclose(logits_old[:, 12:], logits_new[:, F.N_THROTTLE:], atol=1e-5)

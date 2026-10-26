@@ -34,7 +34,7 @@ from ctf.sim import Match
 
 DATA = Path(__file__).resolve().parent / "fixtures"
 FIXTURE = DATA / "equivalence.json"
-POLICY = DATA / "policy_mlp_m3d_u350.npz"
+POLICY = DATA / "policy_mlp_v4.npz"
 CHUNK = 250
 
 # (seed, red, blue, ticks); the last scenario continues with the same memories and bots
