@@ -64,7 +64,9 @@ Working log. The summary is `docs/tracker.html`.
 | lr 1e-3 vs 3e-4 (m3e-b vs m3e-a, 5 workers each, from m3d) | 1e-3 is worse: relay training goal difference −5.9 → −8.4. Stopped. |
 | Capacity: Net2Wider 256×256 (m3e-c vs m3e-a) | About equal over 300 updates (C slightly better vs balanced/camper). Adopted 256×256 as the mainline (cheap at inference). |
 | Defence potential 0.3 (m3e-d vs m3e-c, from the same checkpoint) | Training relay goal difference: D −5.4 → −4.7 vs C −5.2 → −6.1. Held-out about equal or slightly better. Kept, gated off for our own carrier. |
-| v4 bundle; entropy/λ A/B (m4a: 0.003/0.95 vs m4b: 0.0005/0.99) | running |
+| v4 bundle; entropy/λ A/B (m4a: 0.003/0.95 vs m4b: 0.0005/0.99) | **m4b better**. Training at updates 161–222: baseline 100%, rusher 43%, balanced −3.6 (m4a: 83%, 24%, −4.7). Held-out: guardian/rusher/camper 33–44% (m4a 25–33%). Relay about equal. |
+| m4c: entropy 0.0001, λ 0.995 (from m4b u222) vs m4b | running |
+| Release pipeline (`tools/release.py`) | Candidate m4a u70: audit/parity/latency PASS (p99 1.43 ms, max 5.6 ms; stress p99 1.2, max 10.2). Gauntlet seeds 5000–5031: 41% overall |
 
 ## Strategy review (summary)
 Rankings: (1) capture-reset readiness: teammate carrier identity, respawn timers, waiter behaviour; (2) velocity control and symmetric fine bins; (3) targeted denial rather than indiscriminate pursuit; (4) a focused curriculum plus a real league; (5) lower entropy and higher λ before more aggressive PPO; (6) targeted memory (trails, bump normals, stuck duration) before learned sonar. Items 1, 2, 4 and part of 3 are in v4; item 5 is the m4a/m4b A/B.

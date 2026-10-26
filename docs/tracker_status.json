@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3\u2192M4 transition.</b> The policy beats baseline about 90% and the mid-strength bots 15-35%, but relay and balanced are still about 5-15%.<br><br>A strategy review identified <b>coordination and control</b> as the gap: in the relay replay only 58% of our pickups became captures, against 82% for relay. Changes made:<ul><li><b>Features v4:</b> which teammate carries, teammate respawn countdowns, enemies near our home, closing speed on our stolen flag, and how long the enemy flag has sat at home</li><li>symmetric fine throttle bins</li><li>a defence reward potential, which beat the control slightly vs relay</li><li>a focused curriculum: relay and balanced 25% each, plus a <b>league pool</b> of the run's own past snapshots</li></ul>Running an A/B on exploration and credit settings (m4a: entropy 0.003, \u03bb 0.95 vs m4b: entropy 0.0005, \u03bb 0.99). Both warm-start from the previous best via function-preserving surgery (v3\u2192v4 migration, Net2Wider 256\u00d7256).",
+ "summary": "<b>M3\u2192M4 transition.</b> The policy beats baseline about 90% and the mid-strength bots 15-35%, but relay and balanced are still about 5-15%.<br><br>A strategy review identified <b>coordination and control</b> as the gap: in the relay replay only 58% of our pickups became captures, against 82% for relay. Changes made:<ul><li><b>Features v4:</b> which teammate carries, teammate respawn countdowns, enemies near our home, closing speed on our stolen flag, and how long the enemy flag has sat at home</li><li>symmetric fine throttle bins</li><li>a defence reward potential, which beat the control slightly vs relay</li><li>a focused curriculum: relay and balanced 25% each, plus a <b>league pool</b> of the run's own past snapshots</li></ul><b>A/B result:</b> low entropy (0.0005) with \u03bb 0.99 (<b>m4b</b>) beats m4a. In training, m4b reached baseline 100%, rusher 43% and balanced \u22123.6 goal difference; held-out it beats guardian, rusher and camper 33-44%. Next arm: m4c pushes further (entropy 0.0001, \u03bb 0.995).<br><br><b>Release pipeline ready (M6 tooling):</b> one command exports, audits, checks deployed-file parity, runs the 6-worker latency test (p99 ~1.4 ms) and the held-out gauntlet. The first candidate (an early m4a snapshot) passed every check, with a 41% overall win rate across the 10 bots.",
  "milestones": [
   {
    "id": "M0",
@@ -45,72 +45,88 @@
   }
  ],
  "eval_header": [
-  "Bot (scripted, round robin, 32 games vs baseline)",
-  "vs baseline W-D-L",
-  "Goals for / against per match (all games)"
+  "Release candidate exml_rl_candidate (m4a u70) vs",
+  "W-D-L (64 games)",
+  "win %",
+  "goal diff"
  ],
  "eval_rows": [
   [
+   "baseline",
+   "54-4-6",
+   "84",
+   "+2.92"
+  ],
+  [
+   "example",
+   "60-4-0",
+   "94",
+   "+4.03"
+  ],
+  [
+   "example2",
+   "63-1-0",
+   "98",
+   "+4.62"
+  ],
+  [
    "relay",
-   "32-0-0",
-   "10.9 / 4.2"
+   "6-1-57",
+   "9",
+   "-5.50"
   ],
   [
    "balanced",
-   "31-1-0",
-   "10.3 / 4.2"
-  ],
-  [
-   "rusher",
-   "32-0-0",
-   "8.0 / 5.1"
+   "2-0-62",
+   "3",
+   "-5.80"
   ],
   [
    "guardian",
-   "31-1-0",
-   "6.3 / 4.2"
+   "3-8-53",
+   "5",
+   "-2.50"
+  ],
+  [
+   "rusher",
+   "9-14-41",
+   "14",
+   "-1.47"
   ],
   [
    "camper",
-   "31-0-1",
-   "7.4 / 4.6"
+   "17-11-36",
+   "27",
+   "-1.38"
   ],
   [
    "chaos",
-   "32-0-0",
-   "7.2 / 5.3"
+   "16-5-43",
+   "25",
+   "-1.98"
   ],
   [
    "steady",
-   "32-0-0",
-   "4.1 / 6.1"
-  ],
-  [
-   "baseline (provided)",
-   "\u2014",
-   "1.35 / 7.6"
+   "31-15-18",
+   "48",
+   "+0.91"
   ]
  ],
  "runs": [
   {
-   "name": "m4a",
-   "state": "running",
-   "description": "v4 features/bins, 256x256, defence 0.3, focused relay/balanced + league pool; entropy 0.003, \u03bb 0.95."
-  },
-  {
    "name": "m4b",
    "state": "running",
-   "description": "Same as m4a but entropy 0.0005, \u03bb 0.99."
+   "description": "Current best line: v4, 256x256, defence 0.3, focused league curriculum, entropy 0.0005, \u03bb 0.99."
   },
   {
-   "name": "m3e-d",
-   "state": "stopped",
-   "description": "Defence potential 0.3 (from m3e-c): slightly better vs relay than control."
+   "name": "m4c",
+   "state": "running",
+   "description": "Branch of m4b at u222: entropy 0.0001, \u03bb 0.995."
   },
   {
-   "name": "m3e-c",
+   "name": "m4a",
    "state": "stopped",
-   "description": "Net2Wider 256x256 from m3d."
+   "description": "Entropy 0.003, \u03bb 0.95: worse than m4b."
   }
  ],
  "updates": [
@@ -153,6 +169,10 @@
   {
    "time": "2026-10-26 08:40",
    "text": "Features v4 + fine throttle bins + defence potential + focused league curriculum. A/B on entropy/\u03bb running (m4a/m4b)."
+  },
+  {
+   "time": "2026-10-26 10:00",
+   "text": "m4b (low entropy, \u03bb 0.99) wins the A/B. Release pipeline built; first candidate passes all checks. Feature registry + v5 memory features in progress."
   }
  ]
 }
