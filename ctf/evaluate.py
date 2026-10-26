@@ -386,7 +386,8 @@ def _make_team(spec, sphere_ids, seed, role):
 
 def _new_team_stats():
     return {"captures": 0, "pickups": 0, "wall_deaths": 0, "player_deaths": 0,
-            "unknown_deaths": 0, "carrier_deaths": 0, "first_capture_tick": None}
+            "unknown_deaths": 0, "carrier_deaths": 0, "first_capture_tick": None,
+            "repickup_delays": [], "_last_capture": None}
 
 
 def _latency(times):
@@ -447,11 +448,16 @@ def _play(match, controllers, spec_a, spec_b, seed, a_side, b_side, max_ticks, s
             if gained:
                 team = stats[role_of[side]]
                 team["captures"] += gained
+                team["_last_capture"] = tick
                 if team["first_capture_tick"] is None:
                     team["first_capture_tick"] = tick
         for flag, carrier in zip(flags, carriers):
             if flag.carrier is not None and flag.carrier is not carrier:
-                stats[role_of[flag.carrier.team]]["pickups"] += 1
+                team = stats[role_of[flag.carrier.team]]
+                team["pickups"] += 1
+                if team["_last_capture"] is not None:  # flag reset by our capture -> re-taken
+                    team["repickup_delays"].append(tick - team["_last_capture"])
+                    team["_last_capture"] = None
             if carrier is not None and not carrier.alive:
                 stats[role_of[carrier.team]]["carrier_deaths"] += 1
         for message in reversed(death_log):
@@ -464,6 +470,7 @@ def _play(match, controllers, spec_a, spec_b, seed, a_side, b_side, max_ticks, s
     score_a, score_b = score[a_side], score[b_side]
     result = "win" if score_a > score_b else "loss" if score_a < score_b else "draw"
     for role, side in (("a", a_side), ("b", b_side)):
+        stats[role].pop("_last_capture", None)
         stats[role]["side"] = side
         stats[role]["score"] = score[side]
         stats[role]["errors"] = controllers[side].errors
@@ -727,6 +734,8 @@ def summarize(records, n_boot=10000, boot_seed=0):
                 "carrier_deaths_per_match": _rate(sum(t["carrier_deaths"] for t in teams), n),
                 "matches_with_capture": len(firsts),
                 "median_first_capture_tick": float(np.median(firsts)) if firsts else None,
+                "median_repickup_delay": (float(np.median(delays)) if (delays := [
+                    d for t in teams for d in t.get("repickup_delays", [])]) else None),
                 "errors": sum(t.get("errors", 0) for t in teams),
             }
             timings = [r["timing"][f"decide_{role}"] for r in records if "timing" in r]
