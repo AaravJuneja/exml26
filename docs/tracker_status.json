@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3: past baseline, plateaued against the two strongest bots.</b> The policy now beats baseline on 84-97% of held-out maps, and guardian/camper/rusher on 15-28%. Against relay and balanced (~11 goals per match) it has been flat at about 5-15% for ~200M samples.<br><br>Findings:<ul><li><b>Greedy decoding is far stronger than sampling</b> (vs relay 28% vs 6% on fresh seeds), so model.py will use greedy.</li><li>A/B test: a higher learning rate (1e-3) made things <b>worse</b>, so step size isn't the limit.</li></ul>Now testing <b>network capacity</b>: m3e-c widens the actor to 256x256 with function-preserving Net2Wider surgery, against control m3e-a. Next candidate: a <b>defence reward potential</b> (chase our stolen flag), aimed at relay's slow 'waiter' that camps on our flag.",
+ "summary": "<b>M3\u2192M4 transition.</b> The policy beats baseline about 90% and the mid-strength bots 15-35%, but relay and balanced are still about 5-15%.<br><br>A strategy review identified <b>coordination and control</b> as the gap: in the relay replay only 58% of our pickups became captures, against 82% for relay. Changes made:<ul><li><b>Features v4:</b> which teammate carries, teammate respawn countdowns, enemies near our home, closing speed on our stolen flag, and how long the enemy flag has sat at home</li><li>symmetric fine throttle bins</li><li>a defence reward potential, which beat the control slightly vs relay</li><li>a focused curriculum: relay and balanced 25% each, plus a <b>league pool</b> of the run's own past snapshots</li></ul>Running an A/B on exploration and credit settings (m4a: entropy 0.003, \u03bb 0.95 vs m4b: entropy 0.0005, \u03bb 0.99). Both warm-start from the previous best via function-preserving surgery (v3\u2192v4 migration, Net2Wider 256\u00d7256).",
  "milestones": [
   {
    "id": "M0",
@@ -29,7 +29,7 @@
    "id": "M4",
    "title": "Self-play league",
    "state": "active",
-   "note": "League infrastructure (PFSP pool, mirror self-play) built"
+   "note": "League pool + mirror in focused curriculum (m4a/m4b)"
   },
   {
    "id": "M5",
@@ -93,24 +93,24 @@
  ],
  "runs": [
   {
-   "name": "m3e-a",
+   "name": "m4a",
    "state": "running",
-   "description": "Control: m3d weights, MLP 128x128, lr 3e-4, fixed entropy 0.003, shaping 0.2, adaptive mix; 5 workers."
+   "description": "v4 features/bins, 256x256, defence 0.3, focused relay/balanced + league pool; entropy 0.003, \u03bb 0.95."
+  },
+  {
+   "name": "m4b",
+   "state": "running",
+   "description": "Same as m4a but entropy 0.0005, \u03bb 0.99."
+  },
+  {
+   "name": "m3e-d",
+   "state": "stopped",
+   "description": "Defence potential 0.3 (from m3e-c): slightly better vs relay than control."
   },
   {
    "name": "m3e-c",
-   "state": "running",
-   "description": "Capacity test: same as m3e-a but actor widened to 256x256 and critic to 384x384 (Net2Wider); 5 workers."
-  },
-  {
-   "name": "m3e-b",
    "state": "stopped",
-   "description": "lr 1e-3 A/B arm: worse (relay goal difference -5.9 \u2192 -8.4 in training); stopped."
-  },
-  {
-   "name": "m3d",
-   "state": "stopped",
-   "description": "Main M3 run up to u988 (576M samples)."
+   "description": "Net2Wider 256x256 from m3d."
   }
  ],
  "updates": [
@@ -149,6 +149,10 @@
   {
    "time": "2026-10-26 06:40",
    "text": "Plateau vs relay/balanced. Greedy decoding >> sampling. lr 1e-3 A/B worse. Capacity A/B (Net2Wider 256x256) running. Defence potential implemented."
+  },
+  {
+   "time": "2026-10-26 08:40",
+   "text": "Features v4 + fine throttle bins + defence potential + focused league curriculum. A/B on entropy/\u03bb running (m4a/m4b)."
   }
  ]
 }

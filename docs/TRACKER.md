@@ -62,7 +62,12 @@ Working log. The summary is `docs/tracker.html`.
 |---|---|
 | Greedy vs sampled decoding (u720, seeds 2000–2015) | Greedy: baseline 91%, relay 28%, balanced 25%. Sampled: 78%, 6%, 9%. **Use greedy.** |
 | lr 1e-3 vs 3e-4 (m3e-b vs m3e-a, 5 workers each, from m3d) | 1e-3 is worse: relay training goal difference −5.9 → −8.4. Stopped. |
-| Capacity: Net2Wider 256×256 (m3e-c vs m3e-a) | running |
+| Capacity: Net2Wider 256×256 (m3e-c vs m3e-a) | About equal over 300 updates (C slightly better vs balanced/camper). Adopted 256×256 as the mainline (cheap at inference). |
+| Defence potential 0.3 (m3e-d vs m3e-c, from the same checkpoint) | Training relay goal difference: D −5.4 → −4.7 vs C −5.2 → −6.1. Held-out about equal or slightly better. Kept, gated off for our own carrier. |
+| v4 bundle; entropy/λ A/B (m4a: 0.003/0.95 vs m4b: 0.0005/0.99) | running |
+
+## Strategy review (summary)
+Rankings: (1) capture-reset readiness: teammate carrier identity, respawn timers, waiter behaviour; (2) velocity control and symmetric fine bins; (3) targeted denial rather than indiscriminate pursuit; (4) a focused curriculum plus a real league; (5) lower entropy and higher λ before more aggressive PPO; (6) targeted memory (trails, bump normals, stuck duration) before learned sonar. Items 1, 2, 4 and part of 3 are in v4; item 5 is the m4a/m4b A/B.
 
 ## Diagnosis notes
 - **m3b vs relay (seed 1003): lost 2–19.** Relay players average 11–13 u/s (above 11 for 54–73% of the time); ours average 6 u/s (above 11 for 4–9%). We had 13 player deaths and relay 4; pickups 6 vs 20. Cause: no information about safe ground, so we could not sprint. Fix: features v2.
