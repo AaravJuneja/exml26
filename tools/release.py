@@ -38,6 +38,7 @@ import os
 import pickle
 import re
 import shutil
+import time
 import subprocess
 import sys
 import tokenize
@@ -514,7 +515,6 @@ def pause_training(enabled):
     for pid in _children_of_pattern():
         subprocess.run(["kill", "-STOP", pid], check=False)
     time.sleep(3)
-    return True
 
 
 def resume_training(paused):
@@ -831,9 +831,10 @@ def release(args):
     if args.skip_latency:
         incomplete.append("latency skipped")
     elif go_on:
-        paused = pause_training(args.pause_training)
+        paused = args.pause_training
         lat["training_paused"] = paused
         try:
+            pause_training(paused)
             for stress in (0, args.stress):
                 _log(f"[4/5] latency: {args.latency_ticks} ticks, stress {stress}")
                 run = run_latency(model, args.latency_ticks, stress, args.latency_seed,

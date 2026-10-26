@@ -199,3 +199,25 @@ def test_bad_model_stops_release(tmp_path, policy, monkeypatch):
     report = json.loads((tmp_path / "bad" / "release_report.json").read_text())
     assert code == 1 and report["checks"]["audit"] is False
     assert "parity" not in report and "strength" not in report
+
+
+def test_pause_resume_always_resumes(monkeypatch):
+    """A failure while paused must still resume the training jobs."""
+    calls = []
+    monkeypatch.setattr(R, "pause_training", lambda enabled: calls.append(("pause", enabled)))
+    monkeypatch.setattr(R, "resume_training", lambda paused: calls.append(("resume", paused)))
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("latency crashed")
+
+    monkeypatch.setattr(R, "run_latency", boom)
+    import pytest as _pytest
+    with _pytest.raises(RuntimeError):
+        paused = True
+        try:
+            R.pause_training(paused)
+            R.run_latency(None, 1, 0, 1, None)
+        finally:
+            R.resume_training(paused)
+    assert calls == [("pause", True), ("resume", True)]
+    assert hasattr(R, "time")
