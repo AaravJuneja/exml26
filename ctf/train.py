@@ -311,9 +311,20 @@ class Trainer:
                             for path in pool])
         return "policy:" + pool[int(self.rng.choice(len(pool), p=weights / weights.sum()))]
 
-    def jobs(self, count):
+    def mix_probabilities(self):
+        """Base mix, optionally re-weighted toward scripted opponents we still lose to."""
         names = [n for n, _ in self.mix]
-        probs = [p for _, p in self.mix]
+        weights = np.array([p for _, p in self.mix], dtype=np.float64)
+        if self.args.adaptive_mix:
+            for i, name in enumerate(names):
+                if name in ("pool", "mirror", "self"):
+                    continue
+                win = self.opp_winrate.get(name, 0.5)
+                weights[i] *= (1.0 - win) ** 2 + self.args.adaptive_floor
+        return names, weights / weights.sum()
+
+    def jobs(self, count):
+        names, probs = self.mix_probabilities()
         pool = self.pool() if "pool" in names else []
         out = []
         for _ in range(count):
@@ -527,6 +538,8 @@ class Trainer:
                 record["cycle_s"] = round(now - cycle_start, 2)
                 record["ticks_per_s"] = round(sum(r["ticks"] for r in results) / (now - cycle_start))
                 record["pipelined"] = pending
+                mix_names, mix_probs = self.mix_probabilities()
+                record["mix"] = {n: round(float(q), 4) for n, q in zip(mix_names, mix_probs)}
                 record["timing"]["merge_s"] = round(merge_s, 3)
                 cycle_start = now
                 with open(log_path, "a") as handle:
@@ -664,6 +677,9 @@ def main(argv=None):
     p.add_argument("--device", default="cpu")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--init", default="")
+    p.add_argument("--adaptive-mix", type=int, default=0,
+                   help="scale scripted opponents' shares by (1 - EMA win rate)^2 + floor")
+    p.add_argument("--adaptive-floor", type=float, default=0.2)
     p.add_argument("--pool-size", type=int, default=20, help="own snapshots kept in the league")
     p.add_argument("--pool-extra", nargs="*", default=[], help="globs of extra league policies")
     p.add_argument("--fresh", action="store_true")

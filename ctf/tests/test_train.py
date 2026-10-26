@@ -120,3 +120,29 @@ def test_pipelined_training_smoke(tmp_path):
     assert len(records) == 4
     assert [r["pipelined"] for r in records] == [False, True, True, False]
     assert all(np.isfinite(r["pi_loss"]) for r in records)
+
+
+def test_adaptive_mix_shifts_weight_to_harder_opponents(tmp_path):
+    from ctf.train import Trainer, main as _main  # noqa: F401
+    import argparse
+    from ctf import train as T
+    parser_args = ["--name", "mix", "--runs", str(tmp_path), "--opponents",
+                   "baseline:0.5,relay:0.5,mirror:0.2", "--adaptive-mix", "1"]
+    captured = {}
+
+    class Probe(T.Trainer):
+        def run(self):
+            captured["trainer"] = self
+
+    original = T.Trainer
+    T.Trainer = Probe
+    try:
+        T.main(parser_args)
+    finally:
+        T.Trainer = original
+    trainer = captured["trainer"]
+    trainer.opp_winrate = {"baseline": 0.95, "relay": 0.05}
+    names, probs = trainer.mix_probabilities()
+    p = dict(zip(names, probs))
+    assert p["relay"] > 5 * p["baseline"]
+    assert abs(sum(probs) - 1) < 1e-9 and p["mirror"] > 0
