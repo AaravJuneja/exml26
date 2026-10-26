@@ -28,17 +28,18 @@ TEACHER = "relay"
 
 
 class _Player:
-    def __init__(self, variant, headings, speeds, sync):
+    def __init__(self, variant, headings, speeds, sync, no_sonar=False):
         self.decide = load_decide(SCRIPTED[TEACHER])
         self.decide.__globals__["print"] = _silent
         self.variant, self.headings, self.speeds, self.sync = variant, headings, speeds, sync
+        self.no_sonar = no_sonar
         self.reverse = False
         self.labels = self.intents = 0
 
     def act(self, observation):
         out = self.decide(observation)
         if self.variant == "plain":
-            return out
+            return tuple(out[:3]) if self.no_sonar else out
         me = observation["self"]
         M = self.decide.__globals__["M"]
         self.labels += 1
@@ -54,16 +55,16 @@ class _Player:
         throttle, turn, self.reverse = control(me, relative, speed, self.reverse)
         if self.sync:  # relay's memory of its own throttle, as in kickstarting rollouts
             A.sync_teacher(self.decide, throttle)
-        return (throttle, turn, out[2]) + tuple(out[3:4])
+        return (throttle, turn, out[2]) + (() if self.no_sonar else tuple(out[3:4]))
 
 
 def play(job):
-    seed, side, variant, opponent, headings, speeds, sync, ticks = job
+    seed, side, variant, opponent, headings, speeds, sync, ticks, no_sonar = job
     match = Match(seed, max_ticks=ticks, teammates_field=True)
     players = {}
     for s in match.spheres:
         if s.team == side:
-            players[s.id] = _Player(variant, headings, speeds, sync)
+            players[s.id] = _Player(variant, headings, speeds, sync, no_sonar)
         else:
             decide = load_decide(SCRIPTED.get(opponent, opponent))
             decide.__globals__["print"] = _silent
@@ -97,6 +98,8 @@ def main(argv=None):
                         "(mirrored); default: the features' table")
     p.add_argument("--speeds", default="", help="comma-separated speed bins (default: features)")
     p.add_argument("--no-sync", action="store_true", help="leave relay's own throttle memory alone")
+    p.add_argument("--no-sonar", action="store_true",
+                   help="drop relay's sonar output (the student's communication contract)")
     p.add_argument("--ticks", type=int, default=6000)
     args = p.parse_args(argv)
     low, _, high = args.seeds.partition("-")
@@ -110,7 +113,7 @@ def main(argv=None):
     else:
         headings = F.HEADING_VALUES
     speeds = tuple(float(v) for v in args.speeds.split(",")) if args.speeds else F.SPEED_VALUES
-    jobs = [(seed, side, v, o, headings, speeds, not args.no_sync, args.ticks)
+    jobs = [(seed, side, v, o, headings, speeds, not args.no_sync, args.ticks, args.no_sonar)
             for v in args.variants.split(",") for o in args.opponents.split(",")
             for seed in seeds for side in ("red", "blue")]
     started = time.time()
