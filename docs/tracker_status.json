@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3 in progress, run m3d.</b> The clear-ground features (v2) lifted held-out wins vs baseline from <b>44% to 78%</b> (m3c, snapshot u50). The strong scripted bots (relay, balanced, ~11 goals per match) are still mostly unbeaten, at 3-9%.<br><br>The review of the new features found real false-safety issues, now fixed:<ul><li>rays could slip diagonally past blocked cells; they now use exact grid traversal</li><li>airborne or ramp positions were counted as clear ground; now only grounded, ground-level positions count</li><li>nearby bumps didn't block their own cells; they now do</li></ul>Throughput:<ul><li>the learner moved to the GPU, ~10\u00d7 faster per step</li><li>rollouts are now pipelined with updates</li><li>result: 17k \u2192 ~27k ticks/s, about 290M learner samples per hour</li></ul>",
+ "summary": "<b>M3 in progress, run m3d: held-out u300 beats baseline 94%, camper 22%, guardian 16%, rusher 16%; relay 6%, balanced 3%.</b> Against relay on seed 1003 we improved from 2-19 to 7-14; our average speed rose from about 6 to about 8 u/s (relay averages about 11). Work started on optimizing the rollout hot path (exactness-tested) for more training throughput. The clear-ground features (v2) lifted held-out wins vs baseline from <b>44% to 78%</b> (m3c, snapshot u50). The strong scripted bots (relay, balanced, ~11 goals per match) are still mostly unbeaten, at 3-9%.<br><br>The review of the new features found real false-safety issues, now fixed:<ul><li>rays could slip diagonally past blocked cells; they now use exact grid traversal</li><li>airborne or ramp positions were counted as clear ground; now only grounded, ground-level positions count</li><li>nearby bumps didn't block their own cells; they now do</li></ul>Throughput:<ul><li>the learner moved to the GPU, ~10\u00d7 faster per step</li><li>rollouts are now pipelined with updates</li><li>result: 17k \u2192 ~27k ticks/s, about 290M learner samples per hour</li></ul>",
  "milestones": [
   {
    "id": "M0",
@@ -132,6 +132,10 @@
   {
    "time": "2026-10-26 03:30",
    "text": "Features v2 (clear-ground rays) lifted baseline win rate 44%\u219278%. Review fixes (exact ray traversal etc.). Learner moved to GPU + pipelining: ~290M samples/h. m3d running."
+  },
+  {
+   "time": "2026-10-26 04:15",
+   "text": "m3d u300: baseline 94%, camper 22%, guardian/rusher 16%, relay 6%, balanced 3%. Replay vs relay: 7-14 (was 2-19)."
   }
  ]
 }
