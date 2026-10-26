@@ -1,5 +1,5 @@
 {
- "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. <b>A/B now:</b> m5a (v5 memory features) vs m4c (v4). <b>First real submission released: <code>teams/exml_rl/model.py</code></b> (m4c u210). Audit and deployed-file parity PASS. Latency PASS on a quiet machine: p99 0.29 ms, max 3.1 ms (with 6 CPU-burning processes: p99 1.4 ms, max 14 ms; the limit is 30 ms). Held-out: 54% wins overall vs 10 bots (table below). Up from 41% for the first candidate.",
+ "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. v5 memory features (m5a) tied or slightly beat v4, so m5a is now the mainline. Replay vs relay: the newest v4 snapshot <b>won 8-5</b> on the map it previously lost 2-19 and 7-14. The remaining gap is how fast we re-take the flag after it resets: a median of 195 ticks for us vs 51 for relay. <b>A/B now:</b> m5b adds a <i>support potential</i> (rewards waiting near the enemy flag while a teammate carries). <b>First real submission released: <code>teams/exml_rl/model.py</code></b> (m4c u210). Audit and deployed-file parity PASS. Latency PASS on a quiet machine: p99 0.29 ms, max 3.1 ms (with 6 CPU-burning processes: p99 1.4 ms, max 14 ms; the limit is 30 ms). Held-out: 54% wins overall vs 10 bots (table below). Up from 41% for the first candidate.",
  "milestones": [
   {
    "id": "M0",
@@ -114,19 +114,19 @@
  ],
  "runs": [
   {
-   "name": "m4c",
-   "state": "running",
-   "description": "Best line: v4, 256x256, entropy 0.0001, \u03bb 0.995, defence 0.3, relay/balanced 25% each + league pool 15% + mirror 10%."
-  },
-  {
    "name": "m5a",
    "state": "running",
-   "description": "v5 features (trail, stuck, bump normal, collision timing, carrier escape), warm-started from m4c u~205."
+   "description": "Mainline: v5 features, 256x256, entropy 0.0001, \u03bb 0.995, defence 0.3, focused league curriculum."
   },
   {
-   "name": "m4b",
+   "name": "m5b",
+   "state": "running",
+   "description": "m5a + support potential 0.15 (pre-position at the enemy flag home while a teammate carries)."
+  },
+  {
+   "name": "m4c",
    "state": "stopped",
-   "description": "Entropy 0.0005, \u03bb 0.99 (beat m4a; slightly below m4c)."
+   "description": "v4 line; source of the teams/exml_rl release (u210)."
   }
  ],
  "updates": [
@@ -181,6 +181,10 @@
   {
    "time": "2026-10-26 12:45",
    "text": "Released teams/exml_rl (m4c u210): 54% overall vs 10 bots; baseline 92%; latency p99 0.29 ms on a quiet machine."
+  },
+  {
+   "time": "2026-10-26 14:10",
+   "text": "v5 adopted (m5a). Replay vs relay: won 8-5 (was 2-19). Support-potential A/B (m5b) started to fix slow re-pickup (195 vs 51 ticks)."
   }
  ]
 }
