@@ -1,5 +1,5 @@
 {
- "summary": "<b>The policy is learning to score.</b> Run <b>m2e</b> reached 3.2 goals per match against idle opponents after 38M samples (about 10 minutes of training), with ~0.6 wall deaths per player. On held-out maps it beats idle 71% of the time; baseline is 0% so far, since it hasn't trained against real opponents yet (that's M3).<br><br>Since the last update:<ul><li>Review round 2 found and we fixed: a reward leak of the teammate carrier's position, critic drift (fixed with PopArt), and normalisation drift.</li><li>Your ramp fix is applied, and the engine is byte-identical to game-env.</li><li>A discounting side effect in the shaping (a per-tick bonus for idling far from the flag) was diagnosed and fixed; it had stalled two runs.</li><li>Added: a long-horizon win-objective option, a replay viewer (docs/viewer.html), and an exporter latency verdict.</li></ul>",
+ "summary": "<b>M2 passed</b>: the policy, trained from scratch, scores <b>8 goals per match against idle opponents</b> (150M samples, about 1 hour), with 0.8 wall deaths per player.<br><br><b>M3 is running</b> (run <b>m3b</b>, started from the M2 weights) against a mixed pool:<ul><li>the provided bots</li><li>7 new, much stronger scripted training bots (relay scores ~10.9 per match and beats baseline 32-0)</li><li>10% mirror self-play</li></ul>It also uses the long-horizon win objective.<br><br>Review: 3 capped rounds are complete for Phases 1-2; all critical and major findings are fixed. Your ramp fix is applied everywhere. Another session pushed old-approach work to main; I merged it rather than overwriting it (the engine is behaviour-identical, and all tests pass).",
  "milestones": [
   {
    "id": "M0",
@@ -16,14 +16,14 @@
   {
    "id": "M2",
    "title": "Learn to score vs idle (\u22658 captures/match, \u22642 wall deaths/player)",
-   "state": "active",
-   "note": "m2e: 3.2 goals/match vs idle at 38M samples and climbing (gate: \u22658)"
+   "state": "done",
+   "note": "m2e: 8.0 goals/match vs idle, 0.78 wall deaths/player at 150M samples; held-out 96% vs idle"
   },
   {
    "id": "M3",
    "title": "Beat scripted pool (\u226590% wins vs provided bots)",
-   "state": "todo",
-   "note": "5 new training opponents in progress"
+   "state": "active",
+   "note": "m3b running from M2 weights; 7 strong scripted bots + provided bots + mirror"
   },
   {
    "id": "M4",
@@ -45,36 +45,62 @@
   }
  ],
  "eval_header": [
-  "Bot",
+  "Bot (scripted, round robin, 32 games vs baseline)",
   "vs baseline W-D-L",
-  "GD",
-  "Wall deaths / player"
+  "Goals for / against per match (all games)"
  ],
  "eval_rows": [
   [
-   "baseline (reference)",
-   "\u2014",
-   "\u2014",
-   "0.0"
+   "relay",
+   "32-0-0",
+   "10.9 / 4.2"
   ],
   [
-   "example",
-   "4-10-50",
-   "-1.55",
-   "21.6"
+   "balanced",
+   "31-1-0",
+   "10.3 / 4.2"
   ],
   [
-   "example2",
-   "0-11-53",
-   "-2.14",
-   "22.1"
+   "rusher",
+   "32-0-0",
+   "8.0 / 5.1"
+  ],
+  [
+   "guardian",
+   "31-1-0",
+   "6.3 / 4.2"
+  ],
+  [
+   "camper",
+   "31-0-1",
+   "7.4 / 4.6"
+  ],
+  [
+   "chaos",
+   "32-0-0",
+   "7.2 / 5.3"
+  ],
+  [
+   "steady",
+   "32-0-0",
+   "4.1 / 6.1"
+  ],
+  [
+   "baseline (provided)",
+   "\u2014",
+   "1.35 / 7.6"
   ]
  ],
  "runs": [
   {
-   "name": "m2e",
+   "name": "m3b",
    "state": "running",
-   "description": "PPO from scratch vs idle opponents; MLP 128x128; exact potential route shaping (undiscounted differences), 0.5 annealing to 0.1; win bonus 1.0."
+   "description": "From M2 (m2e) weights. Opponent mix: baseline 15%, example/example2 5% each, rusher/guardian/camper/relay/balanced 10% each, chaos/steady 5% each, idle 5%, mirror 10%. Win objective coefficient 0.3."
+  },
+  {
+   "name": "m2e",
+   "state": "done",
+   "description": "M2: PPO from scratch vs idle opponents (passed the gate at 150M samples)."
   }
  ],
  "updates": [
@@ -89,6 +115,10 @@
   {
    "time": "2026-10-26 00:35",
    "text": "M2 learning: 3.2 goals/match vs idle at 38M samples. Review round 2 fixes in. Replay viewer added. Idle-bonus shaping artifact found and fixed."
+  },
+  {
+   "time": "2026-10-26 01:35",
+   "text": "M2 gate passed (8 goals/match vs idle). 7 strong scripted training opponents added. Review round 3 done. M3 (m3b) running. Merged another session's push to main without loss."
   }
  ]
 }

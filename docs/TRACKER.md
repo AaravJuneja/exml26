@@ -24,7 +24,10 @@ Working log. The summary is `docs/tracker.html`.
 | `ctf/evaluate.py` | done | Paired-seed bootstrap; ~565 matches/min on 10 workers; `docs/eval/baseline_gauntlet.json` |
 | League | done | `self`, `pool` (PFSP (1−wr)²+0.05 over the last 20 snapshots plus extra globs) and `mirror` (both teams learn) |
 | `tools/auto_eval.py` | done | Gauntlets every 50th snapshot into `runs/RUN/eval.jsonl`; shown in the tracker |
-| Replay viewer | in progress | `tools/replay.py` and `docs/viewer.html` |
+| Replay viewer | done | `tools/replay.py` (`--html` embeds the replay); `docs/viewer.html` |
+| Scripted opponents | done | relay, balanced, rusher, guardian, camper, chaos, steady; documented-only, generated from `opponents/_core.py`; round robin in `docs/eval/opponents_round_robin.json` |
+| Evaluation/export hardening | done | `compare` validation, digest cache, `@proc` per-process exported-model evaluation, forced 1-thread BLAS, near-tie/sampling parity |
+| Review round 3 (final for Phases 1–2) | done | Fixed: persist `norm_frozen` across `--init`; Monte Carlo win-head targets (`--win-lam 1`); the critic keeps training after the actor KL stop; `--shaping-offset` for exact PBRS; docs. Note: a mirror job is 2 learner units, so mirror probability p gives about 2p/(1+p) of the learner data |
 | `opponents/*` | in progress | rusher, guardian, camper, relay, balanced |
 | Phase 1 review | done | Critical: death-log cap (200) broke death penalties; progress shaping could be farmed by dying. Both fixed: deaths deduplicated by key; potential-based route shaping applied across deaths. Major fixes: wall deaths never home-filtered; bump inferred from pushing at rest; flag velocity keyed to the carrier; numpy-only `npnets`; idempotent encode |
 | Phase 2 review plus round 2 | done | Critical: teammate carrier position leaked through rewards (the engine assigns the carrier before flag coordinates refresh); now uses public flag coordinates. Major fixes: PopArt critic rescaling; exact PBRS on every tick with terminal Φ=0 (tested by an exact discounted-telescoping identity); observation stats frozen after 20 updates; worker health/timeouts/error propagation; flag-velocity baseline after a carrier change; latency verdict fails on load or model errors; KL check before the step; RNG state in checkpoints |
@@ -40,7 +43,10 @@ Working log. The summary is `docs/tracker.html`.
 | probe1 | 2 updates, idle | Throughput probe only |
 | m2a | PPO from scratch vs idle (old rewards) | Stopped at ~16M samples because of the reward bugs; had reached 0.3 goals per match |
 | m2b, m2c | Fixed rewards; old physics (m2b) or pre-round-2 code (m2c) | Stopped and superseded |
-| m2d | Round-2 fixes, exact PBRS, PopArt, frozen normalisation; vs idle | running |
+| m2d | Round-2 fixes, exact discounted PBRS | Stopped: shaping ≈ +30 per match from the (γ−1)Φ idle bonus; 0 pickups at 16M samples |
+| m2e | Undiscounted shaping differences | **M2 gate passed**: 8.0 goals per match vs idle, 0.78 wall deaths per player at 150M samples; held-out 96% vs idle, 4% vs baseline |
+| m3a | From m2e, scripted mix plus mirror, win-coef 0.3 | Stopped after round 3 (norm re-opened by `--init`; bootstrapped win head) |
+| m3b | Same mix, round-3 fixes | running |
 
 ## Backlog from the reviews
 - Long-horizon win objective: a separate undiscounted win-value head (γ=1, terminal win indicator), with its advantage added to the PPO advantage at weight β.
