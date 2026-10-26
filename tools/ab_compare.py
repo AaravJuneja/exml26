@@ -33,7 +33,10 @@ def main():
     p.add_argument("--out", default="")
     args = p.parse_args()
     seeds = parse_seeds(args.seeds)
-    a_spec, b_spec = args.a + "@greedy", args.b + "@greedy"
+    def spec(path):  # .npz policies decode greedily; exported model.py files are played as-is
+        return path + "@greedy" if path.endswith(".npz") else path
+
+    a_spec, b_spec = spec(args.a), spec(args.b)
 
     rows, report = [], {"a": args.a, "b": args.b, "seeds": args.seeds, "opponents": {}}
     for opponent in args.opponents:
