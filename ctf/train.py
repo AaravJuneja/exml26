@@ -396,9 +396,16 @@ class Trainer:
 
     def pick_pool_opponent(self, pool):
         """Prioritized fictitious self-play: weight (1 - winrate)^2, floor 0.05."""
-        weights = np.array([(1.0 - self.opp_winrate.get("policy:" + path, 0.5)) ** 2 + 0.05
-                            for path in pool])
-        return "policy:" + pool[int(self.rng.choice(len(pool), p=weights / weights.sum()))]
+        def winrate(path):  # PFSP difficulty from both decoding modes of a snapshot
+            seen = [self.opp_winrate[k + path] for k in ("greedy:", "policy:")
+                    if k + path in self.opp_winrate]
+            return sum(seen) / len(seen) if seen else 0.5
+
+        weights = np.array([(1.0 - winrate(path)) ** 2 + 0.05 for path in pool])
+        path = pool[int(self.rng.choice(len(pool), p=weights / weights.sum()))]
+        # Frozen opponents mostly play greedy, as a deployed policy does (sampling is far weaker).
+        kind = "greedy:" if self.rng.random() < self.args.pool_greedy else "policy:"
+        return kind + path
 
     def mix_probabilities(self):
         """Base mix, optionally re-weighted toward scripted opponents we still lose to."""
@@ -698,7 +705,7 @@ class Trainer:
             **learn,
         }
         def group(name):
-            return "pool" if name.startswith("policy:") else name
+            return "pool" if name.startswith(("policy:", "greedy:")) else name
 
         for name in sorted({group(s["opponent"]) for s in stats}):
             subset = [s for s in stats if group(s["opponent"]) == name]
@@ -769,6 +776,8 @@ def main(argv=None):
     p.add_argument("--adaptive-mix", type=int, default=0,
                    help="scale scripted opponents' shares by (1 - EMA win rate)^2 + floor")
     p.add_argument("--adaptive-floor", type=float, default=0.2)
+    p.add_argument("--pool-greedy", type=float, default=0.8,
+                   help="probability that a frozen pool opponent decodes greedily")
     p.add_argument("--pool-size", type=int, default=20, help="own snapshots kept in the league")
     p.add_argument("--pool-extra", nargs="*", default=[], help="globs of extra league policies")
     p.add_argument("--fresh", action="store_true")
