@@ -110,3 +110,13 @@ def test_feature_surgery_preserves_old_policy(tmp_path):
     assert torch.allclose(x_old @ old_net[0].weight.T + old_net[0].bias, x_new @ w.T + b, atol=1e-5)
     assert new["norm"]["mean"].shape == (F.FEATURE_DIM,)
     del old
+
+
+def test_pipelined_training_smoke(tmp_path):
+    main(["--name", "pipe", "--runs", str(tmp_path), "--workers", "2", "--envs", "1",
+          "--max-ticks", "150", "--updates", "4", "--minibatch", "256", "--norm-updates", "1",
+          "--opponents", "baseline:1,mirror:1", "--learner-threads", "2", "--pipeline", "1"])
+    records = [json.loads(line) for line in (tmp_path / "pipe" / "log.jsonl").read_text().splitlines()]
+    assert len(records) == 4
+    assert [r["pipelined"] for r in records] == [False, True, True, False]
+    assert all(np.isfinite(r["pi_loss"]) for r in records)

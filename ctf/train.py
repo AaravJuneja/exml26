@@ -482,18 +482,21 @@ class Trainer:
             procs.append(proc)
         log_path = self.run_dir / "log.jsonl"
         try:
+            pending = False
+            cycle_start = time.perf_counter()
             while self.update < args.updates:
                 t0 = time.perf_counter()
-                weights = actor_to_numpy(self.actor)
-                mean, std = self.norm.mean.astype(np.float32), self.norm.std.astype(np.float32)
-                config = {"reward_weights": self.reward_weights(), "max_ticks": args.max_ticks,
-                          "memory_wipe_prob": args.memory_wipe,
-                          "hidden_every": hidden_every(args.chunk, args.burn_in)}
-                for pipe in pipes:
-                    config = dict(config, seed=int(self.rng.integers(2**31)))
-                    pipe.send((weights, mean, std, self.jobs(args.envs), config))
+                if not pending:
+                    self.dispatch(pipes)
                 results = [self.receive(pipe, proc) for pipe, proc in zip(pipes, procs)]
                 t1 = time.perf_counter()
+                # Pipelining: start the next rollout with the pre-update weights while the
+                # learner updates (one update of policy lag; PPO's ratio uses the recorded
+                # behaviour log-probs). Only once normalization is frozen, so the statistics
+                # used by workers and learner always agree.
+                pending = bool(args.pipeline and self.norm_frozen and self.update + 1 < args.updates)
+                if pending:
+                    self.dispatch(pipes)
                 batch = merge_results(results, self.recurrent)
                 stats = [s for r in results for s in r["stats"]]
                 batch["won"] = np.array([s["result"] == "win" for s in stats])
@@ -504,6 +507,11 @@ class Trainer:
                 self.samples += learn["samples"]
                 record = self.summarize(stats, learn, t1 - t0, t2 - t1,
                                         sum(r["ticks"] for r in results))
+                now = time.perf_counter()
+                record["cycle_s"] = round(now - cycle_start, 2)
+                record["ticks_per_s"] = round(sum(r["ticks"] for r in results) / (now - cycle_start))
+                record["pipelined"] = pending
+                cycle_start = now
                 with open(log_path, "a") as handle:
                     handle.write(json.dumps(record) + "\n")
                 print(json.dumps({k: record[k] for k in (
@@ -524,6 +532,17 @@ class Trainer:
                 proc.join(timeout=5)
                 if proc.is_alive():
                     proc.terminate()
+
+    def dispatch(self, pipes):
+        args = self.args
+        weights = actor_to_numpy(self.actor)
+        mean, std = self.norm.mean.astype(np.float32), self.norm.std.astype(np.float32)
+        config = {"reward_weights": self.reward_weights(), "max_ticks": args.max_ticks,
+                  "memory_wipe_prob": args.memory_wipe,
+                  "hidden_every": hidden_every(args.chunk, args.burn_in)}
+        for pipe in pipes:
+            pipe.send((weights, mean, std, self.jobs(args.envs),
+                       dict(config, seed=int(self.rng.integers(2**31)))))
 
     def receive(self, pipe, proc):
         """Wait for a worker's rollout; fail loudly if it died or reported an error."""
@@ -623,6 +642,8 @@ def main(argv=None):
     p.add_argument("--snapshot-every", type=int, default=10)
     p.add_argument("--learner-threads", type=int, default=8)
     p.add_argument("--worker-timeout", type=float, default=1800.0)
+    p.add_argument("--pipeline", type=int, default=1,
+                   help="overlap the next rollout with the learner update (1 update of lag)")
     p.add_argument("--device", default="cpu")
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--init", default="")
