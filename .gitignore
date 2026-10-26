@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 data/telemetry/*.jsonl
 .DS_Store
+*.uid
 *.uidbench/.policies/
 runs/
 data/

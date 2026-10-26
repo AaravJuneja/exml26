@@ -36,6 +36,8 @@ def resolve_ramp_collisions(spheres, ramps):
         if not sphere.alive:
             continue
         for ramp in ramps:
+            # Changed from skipping all ramp edges when any ramp had a surface
+            # here to checking this ramp against the sphere's bottom.
             h = ramp.height_at(sphere.x, sphere.y)
             if h is not None and sphere.z - SPHERE_RADIUS >= h - 1e-6:
                 continue

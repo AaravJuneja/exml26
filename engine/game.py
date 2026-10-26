@@ -59,7 +59,17 @@ def _team_home(index, total):
 
 
 class Game:
-    def __init__(self, teams, spheres_per_team=3, seed=None, max_ticks=6000):
+    def __init__(
+        self,
+        teams,
+        spheres_per_team=3,
+        seed=None,
+        max_ticks=6000,
+        *,
+        client_factory=None,
+        record_telemetry=True,
+        parallel_callbacks=True,
+    ):
         if not teams:
             raise ValueError("teams must be a non-empty list")
         if spheres_per_team < 1:
@@ -79,6 +89,7 @@ class Game:
         self.teams = teams
         self.seed = seed
         self.max_ticks = max_ticks
+        self.parallel_callbacks = bool(parallel_callbacks)
         self.tick = 0
         self.score = {t["name"]: 0 for t in teams}
 
@@ -91,12 +102,19 @@ class Game:
                 offset = (i - spheres_per_team / 2.0) * 3.0
                 sphere = Sphere(sphere_id, team["name"], hx + offset, hy, player=i + 1)
                 self.spheres.append(sphere)
-                self.clients[sphere_id] = ModelWorker(
-                    team["name"], team["model_path"], sphere_id=sphere_id)
+                if client_factory is None:
+                    client = ModelWorker(
+                        team["name"], team["model_path"], sphere_id=sphere_id
+                    )
+                else:
+                    client = client_factory(team, sphere)
+                self.clients[sphere_id] = client
                 sphere_id += 1
 
         for client in self.clients.values():
-            client.wait_ready()
+            wait_ready = getattr(client, "wait_ready", None)
+            if callable(wait_ready):
+                wait_ready()
 
         self.flags = [Flag(team["name"], hx, hy) for team, (hx, hy) in zip(teams, homes)]
         ramp_seed = None if seed is None else (seed + 0x9E37) & 0xFFFFFFFF
@@ -106,8 +124,15 @@ class Game:
             print(f"warn: placed {len(self.obstacles)}/24 obstacles (seed={seed})")
         if len(self.ramps) < 12:
             print(f"warn: placed {len(self.ramps)}/12 ramps (seed={seed})")
-        self.telemetry = TelemetryRecorder()
-        self.telemetry.record_map(self.obstacles, self.flags, self.teams, self.max_ticks, self.ramps, seed=seed)
+        self.telemetry = TelemetryRecorder() if record_telemetry else _NullTelemetry()
+        self.telemetry.record_map(
+            self.obstacles,
+            self.flags,
+            self.teams,
+            self.max_ticks,
+            self.ramps,
+            seed=seed,
+        )
         self._pool = ThreadPoolExecutor(max_workers=max(4, len(self.spheres)))
         self._respawn_at = {}
         self._last_sonar = {}
@@ -119,6 +144,37 @@ class Game:
 
     def _collect_sphere_action(self, sphere, all_alive, own_flag_state, other_flags_state, sonar_snapshot):
         worker = self.clients[sphere.id]
+        observation = self._build_observation(
+            sphere,
+            all_alive,
+            own_flag_state,
+            other_flags_state,
+            sonar_snapshot,
+        )
+        return worker.get_action(observation, RPC_TIMEOUT_S)
+
+    def _build_observation(
+        self,
+        sphere,
+        all_alive=None,
+        own_flag_state=None,
+        other_flags_state=None,
+        sonar_snapshot=None,
+    ):
+        """Build the same callback payload used by ``step`` at current state."""
+        if all_alive is None:
+            all_alive = [candidate for candidate in self.spheres if candidate.alive]
+        flag_by_team = {flag.team: flag for flag in self.flags}
+        if own_flag_state is None:
+            own_flag_state = flag_by_team[sphere.team].to_state_dict()
+        if other_flags_state is None:
+            other_flags_state = [
+                flag.to_state_dict()
+                for flag in self.flags
+                if flag.team != sphere.team
+            ]
+        if sonar_snapshot is None:
+            sonar_snapshot = dict(self._last_sonar)
         recent_deaths = self._recent_deaths()
         mates = [s for s in all_alive if s.team == sphere.team and s.id != sphere.id]
         sonars = audible_sonars(sphere, all_alive, sonar_snapshot, self.obstacles)
@@ -134,15 +190,14 @@ class Game:
             "sonar_recieve": sonars,
             "death_messages": [m for m in recent_deaths if m["team"] == sphere.team],
         }
-        return worker.get_action(observation, RPC_TIMEOUT_S)
+        return observation
 
     def step(self):
         alive_spheres = [s for s in self.spheres if s.alive]
         flag_by_team = {f.team: f for f in self.flags}
 
-        futures = {
-            sphere.id: self._pool.submit(
-                self._collect_sphere_action,
+        action_args = {
+            sphere.id: (
                 sphere,
                 alive_spheres,
                 flag_by_team[sphere.team].to_state_dict(),
@@ -151,9 +206,24 @@ class Game:
             )
             for sphere in alive_spheres
         }
+        if getattr(self, "parallel_callbacks", True):
+            pending_actions = {
+                sid: self._pool.submit(self._collect_sphere_action, *args)
+                for sid, args in action_args.items()
+            }
+            actions = {
+                sid: future.result() for sid, future in pending_actions.items()
+            }
+        else:
+            # All payloads above are snapshots from the same pre-physics state;
+            # deterministic local collectors can avoid thread scheduling noise.
+            actions = {
+                sid: self._collect_sphere_action(*args)
+                for sid, args in action_args.items()
+            }
         by_id = {s.id: s for s in alive_spheres}
-        for sid, future in futures.items():
-            throttle, turn, jump, sonar_val = _normalize_action(future.result())
+        for sid, action in actions.items():
+            throttle, turn, jump, sonar_val = _normalize_action(action)
             sphere = by_id[sid]
             sphere.apply_action(throttle, turn, jump, sonar_val, TICK_DT)
             if sonar_val is not None:
@@ -222,3 +292,21 @@ class Game:
             for client in self.clients.values():
                 client.close()
             self._pool.shutdown()
+
+
+class _NullTelemetry:
+    """No-op recorder for bounded headless collectors and evaluations."""
+
+    file_path = None
+
+    @staticmethod
+    def record_map(*_args, **_kwargs):
+        return None
+
+    @staticmethod
+    def record_tick(*_args, **_kwargs):
+        return None
+
+    @staticmethod
+    def close():
+        return None
