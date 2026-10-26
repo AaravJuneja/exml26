@@ -271,7 +271,7 @@ class Trainer:
             self.opp_winrate = state.get("opp_winrate", {})
             if "np_rng" in state:
                 self.rng.bit_generator.state = state["np_rng"]
-                torch.set_rng_state(state["torch_rng"])
+                torch.set_rng_state(state["torch_rng"].cpu())
 
     def export_policy(self, path):
         save_policy(path, actor_to_numpy(self.actor), self.norm.mean, self.norm.std,
@@ -345,6 +345,14 @@ class Trainer:
 
     def ppo_update(self, batch):
         args = self.args
+        clock = [time.perf_counter()]
+        timing = {}
+
+        def lap(name):
+            now = time.perf_counter()
+            timing[name] = round(now - clock[0], 3)
+            clock[0] = now
+
         T, E = batch["rewards"].shape[:2]
         alive = batch["alive"].reshape(T, E * 3)
         raw = batch["obs"].reshape(T, E * 3, -1)
@@ -354,6 +362,7 @@ class Trainer:
         flat_index = np.nonzero(alive.reshape(-1))[0]
         x_all = torch.as_tensor(raw.reshape(T * E * 3, -1)[flat_index], device=self.device)
         x_all = torch.clamp((x_all - mean) / std, -5.0, 5.0)
+        lap("prep_s")
         with torch.no_grad():
             heads = torch.cat([self.critic(chunk) for chunk in torch.split(x_all, 65536)])
         heads = heads.cpu().numpy().astype(np.float64)
@@ -361,6 +370,7 @@ class Trainer:
         values = np.zeros(T * E * 3, dtype=np.float64)
         values[flat_index] = v_raw
         values = values.reshape(T, E * 3)
+        lap("critic_s")
         adv = gae(batch["rewards"].reshape(T, E * 3), values, alive, args.gamma, args.lam)
         returns = (adv + values).reshape(-1)[flat_index]
         adv = adv.reshape(-1)[flat_index]
@@ -393,6 +403,7 @@ class Trainer:
         old_logp = torch.as_tensor(batch["logp"].reshape(-1)[flat_index], device=self.device)
 
         n = len(flat_index)
+        lap("gae_s")
         ent_coef = self.entropy_coef()
         stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": []}
         extra = {}
@@ -431,16 +442,19 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(
                     list(self.actor.parameters()) + list(self.critic.parameters()), args.max_grad)
                 self.optimizer.step()
-                stats["pi_loss"].append(pi_loss.item())
-                stats["v_loss"].append(v_loss.item())
-                stats["entropy"].append(entropy.mean().item())
-                stats["kl"].append(kl)
-                stats["clipfrac"].append(((ratio - 1).abs() > args.clip).float().mean().item())
+                with torch.no_grad():
+                    stats["pi_loss"].append(pi_loss.detach())
+                    stats["v_loss"].append(v_loss.detach())
+                    stats["entropy"].append(entropy.mean().detach())
+                    stats["kl"].append(torch.as_tensor(kl))
+                    stats["clipfrac"].append(((ratio - 1).abs() > args.clip).float().mean())
         if not self.norm_frozen:
             self.norm.update(raw.reshape(T * E * 3, -1)[flat_index][:: args.norm_stride])
             self.norm_frozen = self.update + 1 >= args.norm_updates
-        out = {k: float(np.mean(v)) if v else 0.0 for k, v in stats.items()}
-        out.update({"explained_var": float(explained), "samples": int(n),
+        lap("optimize_s")
+        out = {k: float(torch.stack([t.float().cpu() for t in v]).mean()) if v else 0.0
+               for k, v in stats.items()}
+        out.update({"timing": timing, "explained_var": float(explained), "samples": int(n),
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
                     "actor_stopped": actor_stopped,
                     "win_value_mean": float(heads[:, 1].mean()),
@@ -497,7 +511,9 @@ class Trainer:
                 pending = bool(args.pipeline and self.norm_frozen and self.update + 1 < args.updates)
                 if pending:
                     self.dispatch(pipes)
+                merge_start = time.perf_counter()
                 batch = merge_results(results, self.recurrent)
+                merge_s = time.perf_counter() - merge_start
                 stats = [s for r in results for s in r["stats"]]
                 batch["won"] = np.array([s["result"] == "win" for s in stats])
                 self.record_results(stats)
@@ -511,6 +527,7 @@ class Trainer:
                 record["cycle_s"] = round(now - cycle_start, 2)
                 record["ticks_per_s"] = round(sum(r["ticks"] for r in results) / (now - cycle_start))
                 record["pipelined"] = pending
+                record["timing"]["merge_s"] = round(merge_s, 3)
                 cycle_start = now
                 with open(log_path, "a") as handle:
                     handle.write(json.dumps(record) + "\n")
@@ -615,7 +632,7 @@ def main(argv=None):
     p.add_argument("--lam", type=float, default=0.95)
     p.add_argument("--clip", type=float, default=0.2)
     p.add_argument("--epochs", type=int, default=4)
-    p.add_argument("--minibatch", type=int, default=8192)
+    p.add_argument("--minibatch", type=int, default=16384)
     p.add_argument("--vf-coef", type=float, default=0.5)
     p.add_argument("--ent-coef", type=float, default=0.01)
     p.add_argument("--ent-final", type=float, default=0.003)
