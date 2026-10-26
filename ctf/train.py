@@ -6,11 +6,18 @@ Each update: every worker plays `envs` complete matches with the current
 policy; the learner computes gap-aware GAE (players have no callbacks while
 dead, so transitions span the respawn gap with discount gamma**gap), then runs
 clipped PPO epochs. Logs go to runs/NAME/log.jsonl, policies to runs/NAME/policies/.
+
+`--arch gru` swaps the MLP actor for GRUActor (the critic stays a feed-forward
+MLP over the same features). GAE is unchanged; the policy loss is computed
+over per-player sequences of alive decisions, cut into `--chunk`-step chunks
+that start from hidden states stored by the rollout, optionally re-warmed with
+`--burn-in` steps of the previous chunk under the current weights.
 """
 
 import argparse
 import glob
 import json
+import math
 import multiprocessing as mp
 import os
 import time
@@ -20,7 +27,7 @@ import numpy as np
 import torch
 
 from ctf import features as F
-from ctf.nets import Actor, Critic, RunningNorm, actor_to_numpy, log_prob_entropy
+from ctf.nets import Critic, RunningNorm, actor_to_numpy, build_actor, log_prob_entropy
 from ctf.policy_io import save_policy
 from ctf.rewards import DEFAULT_WEIGHTS
 from ctf.rollout import worker_main
@@ -51,6 +58,92 @@ def gae(rewards, values, alive, gamma, lam):
     return adv
 
 
+def hidden_every(chunk, burn_in):
+    """Stride (in decisions since a reset) at which rollouts store hidden states:
+    every chunk start and every burn-in start must be a multiple of it."""
+    return math.gcd(chunk, burn_in) if burn_in else chunk
+
+
+def build_sequences(alive, resets, h0_key, chunk, burn_in):
+    """Cut every player's alive decisions into chunks for recurrent PPO.
+
+    alive, resets: [T, N] bool (N = units * 3 player columns); h0_key: [K] grid
+    keys `t * N + n` of the stored hidden states. Positions refer to the
+    flattened alive decisions in row-major (t, n) order, i.e. to
+    `np.flatnonzero(alive.reshape(-1))`, the order the trainer uses.
+
+    A chunk starts at every decision whose index since the last reset is a
+    multiple of `chunk`, so no chunk contains a reset. Returns a dict:
+      main [C, chunk]      positions of the chunk's decisions, -1 padded
+      burn [C, burn_in]    positions of the `burn_in` decisions before the chunk
+      has_burn [C]         chunk does not start a segment (and burn_in > 0)
+      h0_index [C]         index into h0_key of the initial state: the state
+                           before the first burn-in decision, else before the
+                           chunk's first decision
+    """
+    T, N = alive.shape
+    flat_index = np.flatnonzero(alive.reshape(-1))
+    t_of, n_of = np.divmod(flat_index, N)
+    order = np.lexsort((t_of, n_of))  # by player, then time
+    reset = resets.reshape(-1)[flat_index][order]
+    column = n_of[order]
+    first = np.ones(len(order), dtype=bool)
+    first[1:] = column[1:] != column[:-1]
+    if np.any(first & ~reset):
+        raise ValueError("a player's first decision must start a fresh hidden state")
+    seg_start = np.flatnonzero(reset)
+    count = np.arange(len(order)) - seg_start[np.cumsum(reset) - 1]
+    starts = np.flatnonzero(count % chunk == 0)
+    lengths = np.diff(np.append(starts, len(order)))
+    offsets = np.arange(chunk)
+    valid = offsets[None, :] < lengths[:, None]
+    main_order = np.minimum(starts[:, None] + offsets, len(order) - 1)
+    main = np.where(valid, order[main_order], -1)
+    has_burn = (count[starts] > 0) & (burn_in > 0)
+    burn_order = np.where(has_burn[:, None], starts[:, None] - burn_in + np.arange(burn_in), 0)
+    burn = order[burn_order]
+    init_key = flat_index[order[np.where(has_burn, starts - burn_in, starts)]]
+    h0_index = np.minimum(np.searchsorted(h0_key, init_key), max(len(h0_key) - 1, 0))
+    if len(starts) and (len(h0_key) == 0 or np.any(h0_key[h0_index] != init_key)):
+        raise ValueError("rollout did not store the hidden state at a chunk start "
+                         "(hidden_every must divide --chunk and --burn-in)")
+    return {"main": main, "burn": burn, "has_burn": has_burn, "h0_index": h0_index}
+
+
+def sequence_logits(actor, x_all, h0, seqs, chunks):
+    """Logits of the valid decisions of `chunks` (index array into seqs) and their positions.
+
+    x_all: normalized features [n, D] in position order; h0: stored states [K, H].
+    Burn-in runs without gradient from the stored state before the burn-in steps.
+    """
+    main = seqs["main"][chunks]
+    h = h0[seqs["h0_index"][chunks]]
+    has_burn = seqs["has_burn"][chunks]
+    if has_burn.any():
+        h = h.clone()
+        h[has_burn] = actor.final_state(x_all[seqs["burn"][chunks][has_burn]], h[has_burn])
+    valid = main >= 0
+    logits, _ = actor(x_all[main.clamp(min=0)], h)
+    return logits[valid], main[valid]
+
+
+def merge_results(results, recurrent):
+    """Concatenate worker rollouts along the unit axis (stored hidden states re-keyed)."""
+    keys = ("obs", "actions", "logp", "rewards", "alive") + (("resets",) if recurrent else ())
+    batch = {key: np.concatenate([r[key] for r in results], axis=1) for key in keys}
+    if recurrent:
+        N = batch["alive"].shape[1] * 3
+        keys, offset = [], 0
+        for r in results:
+            keys.append(r["h0_t"] * N + (r["h0_unit"] + offset) * 3 + r["h0_slot"])
+            offset += r["alive"].shape[1]
+        h0_key = np.concatenate(keys)
+        order = np.argsort(h0_key, kind="stable")
+        batch["h0_key"] = h0_key[order]
+        batch["h0"] = np.concatenate([r["h0"] for r in results])[order]
+    return batch
+
+
 def parse_mix(text):
     mix = []
     for part in text.split(","):
@@ -71,7 +164,11 @@ class Trainer:
         self.rng = np.random.default_rng(args.seed)
         torch.set_num_threads(args.learner_threads)
         self.device = torch.device(args.device)
-        self.actor = Actor(tuple(args.hidden)).to(self.device)
+        if args.arch == "gru":
+            if args.chunk < 1 or not 0 <= args.burn_in <= args.chunk:
+                raise ValueError("--arch gru needs --chunk >= 1 and 0 <= --burn-in <= --chunk")
+        self.recurrent = args.arch == "gru"
+        self.actor = build_actor(args.arch, tuple(args.hidden)).to(self.device)
         self.critic = Critic(tuple(args.critic_hidden)).to(self.device)
         self.optimizer = torch.optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters()), lr=args.lr, eps=1e-5)
@@ -106,6 +203,9 @@ class Trainer:
 
     def load(self, path, weights_only=False):
         state = torch.load(path, map_location=self.device, weights_only=False)
+        arch = state.get("args", {}).get("arch", "mlp")
+        if arch != self.args.arch:
+            raise ValueError(f"{path} holds a {arch!r} actor but --arch is {self.args.arch!r}")
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
         self.norm.load(state["norm"])
@@ -241,13 +341,22 @@ class Trainer:
         n = len(flat_index)
         ent_coef = self.entropy_coef()
         stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": []}
+        extra = {}
+        if self.recurrent:
+            seqs = build_sequences(alive, batch["resets"].reshape(T, E * 3), batch["h0_key"],
+                                   args.chunk, args.burn_in)
+            seqs = {k: torch.as_tensor(v, device=self.device) for k, v in seqs.items()}
+            h0 = torch.as_tensor(batch["h0"], device=self.device)
+            extra["chunks"] = int(len(seqs["main"]))
         actor_stopped = False
+        first = True
         for _epoch in range(args.epochs):
-            perm = torch.randperm(n, device=self.device)
-            for start in range(0, n, args.minibatch):
-                idx = perm[start:start + args.minibatch]
-                logits = self.actor(x_all[idx])
+            for idx, logits in self.minibatches(x_all, n, seqs if self.recurrent else None,
+                                                h0 if self.recurrent else None):
                 logp, entropy = log_prob_entropy(logits, act_t[idx])
+                if first:  # weights untouched: recomputed log-probs must match the rollout's
+                    extra["logp_drift"] = float((logp - old_logp[idx]).abs().max().item())
+                    first = False
                 ratio = torch.exp(logp - old_logp[idx])
                 with torch.no_grad():
                     kl = ((ratio - 1) - (logp - old_logp[idx])).mean().item()
@@ -281,8 +390,29 @@ class Trainer:
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
                     "actor_stopped": actor_stopped,
                     "win_value_mean": float(heads[:, 1].mean()),
-                    "adv_raw_std": float(adv.std())})
+                    "adv_raw_std": float(adv.std()), **extra})
         return out
+
+    def minibatches(self, x_all, n, seqs, h0):
+        """Yield (decision positions, actor logits) for one epoch of shuffled minibatches.
+
+        MLP: flat minibatches of `--minibatch` decisions. GRU: minibatches of
+        `--minibatch // --chunk` whole chunks, run through the GRU (logits are
+        computed lazily, after the previous minibatch's optimizer step).
+        """
+        if seqs is None:
+            perm = torch.randperm(n, device=self.device)
+            for start in range(0, n, self.args.minibatch):
+                idx = perm[start:start + self.args.minibatch]
+                yield idx, self.actor(x_all[idx])
+            return
+        n_chunks = len(seqs["main"])
+        per_batch = max(1, self.args.minibatch // self.args.chunk)
+        perm = torch.randperm(n_chunks, device=self.device)
+        for start in range(0, n_chunks, per_batch):
+            chunks = perm[start:start + per_batch]
+            logits, idx = sequence_logits(self.actor, x_all, h0, seqs, chunks)
+            yield idx, logits
 
     # ------------------------------------------------------------------ run
     def run(self):
@@ -303,14 +433,14 @@ class Trainer:
                 weights = actor_to_numpy(self.actor)
                 mean, std = self.norm.mean.astype(np.float32), self.norm.std.astype(np.float32)
                 config = {"reward_weights": self.reward_weights(), "max_ticks": args.max_ticks,
-                          "memory_wipe_prob": args.memory_wipe}
+                          "memory_wipe_prob": args.memory_wipe,
+                          "hidden_every": hidden_every(args.chunk, args.burn_in)}
                 for pipe in pipes:
                     config = dict(config, seed=int(self.rng.integers(2**31)))
                     pipe.send((weights, mean, std, self.jobs(args.envs), config))
                 results = [self.receive(pipe, proc) for pipe, proc in zip(pipes, procs)]
                 t1 = time.perf_counter()
-                batch = {key: np.concatenate([r[key] for r in results], axis=1)
-                         for key in ("obs", "actions", "logp", "rewards", "alive")}
+                batch = merge_results(results, self.recurrent)
                 stats = [s for r in results for s in r["stats"]]
                 batch["won"] = np.array([s["result"] == "win" for s in stats])
                 self.record_results(stats)
@@ -397,7 +527,15 @@ def main(argv=None):
     p.add_argument("--envs", type=int, default=3, help="matches per worker per update")
     p.add_argument("--max-ticks", type=int, default=6000)
     p.add_argument("--updates", type=int, default=10**9)
+    p.add_argument("--arch", choices=("mlp", "gru"), default="mlp",
+                   help="actor: tanh MLP over --hidden, or gru = Linear(H1)+tanh -> GRU(HG) "
+                        "with --hidden H1 HG")
     p.add_argument("--hidden", type=int, nargs="+", default=[128, 128])
+    p.add_argument("--chunk", type=int, default=64,
+                   help="gru: decisions per training sequence")
+    p.add_argument("--burn-in", type=int, default=0,
+                   help="gru: decisions of the previous chunk replayed (no gradient) to refresh "
+                        "the stored start state under the current weights")
     p.add_argument("--critic-hidden", type=int, nargs="+", default=[256, 256])
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--gamma", type=float, default=0.998)

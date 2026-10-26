@@ -1,8 +1,9 @@
 """Actor/critic networks (torch for training, numpy for rollouts and export).
 
 The actor is an MLP over normalized features with three categorical heads:
-throttle (N_THROTTLE), turn (N_TURN) and jump (2). The critic is a separate,
-wider MLP used only in training. Both see only one player's own features.
+throttle (N_THROTTLE), turn (N_TURN) and jump (2); `GRUActor` is the optional
+recurrent variant (`--arch gru`). The critic is a separate, wider MLP used only
+in training. Both see only one player's own features.
 """
 
 import numpy as np
@@ -10,7 +11,8 @@ import torch
 from torch import nn
 
 from ctf.features import FEATURE_DIM
-from ctf.npnets import HEAD_SIZES, N_LOGITS, NumpyActor, RunningNorm  # noqa: F401
+from ctf.npnets import (HEAD_SIZES, N_LOGITS, NumpyActor, NumpyGRUActor,  # noqa: F401
+                        RunningNorm)
 
 
 def _layer(n_in, n_out, gain):
@@ -33,6 +35,52 @@ class Actor(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+class GRUActor(nn.Module):
+    """Linear(FEATURE_DIM -> H1) + tanh -> GRU(H1 -> Hg) -> Linear(Hg -> N_LOGITS).
+
+    The hidden state advances once per alive decision of a player; see
+    NumpyGRUActor for the matching numpy step used in rollouts and export.
+    """
+
+    def __init__(self, hidden=(128, 128)):
+        super().__init__()
+        if len(hidden) != 2:
+            raise ValueError("GRU actor takes --hidden H1 HG (input layer, GRU size)")
+        n_in, n_gru = hidden
+        self.inp = _layer(FEATURE_DIM, n_in, 2 ** 0.5)
+        self.gru = nn.GRU(n_in, n_gru, batch_first=True)
+        for name, param in self.gru.named_parameters():
+            if name.startswith("weight_hh"):
+                for k in range(3):  # orthogonal recurrent weights, one block per gate
+                    nn.init.orthogonal_(param.data[k * n_gru:(k + 1) * n_gru])
+            elif name.startswith("weight_ih"):
+                nn.init.xavier_uniform_(param.data)
+            else:
+                nn.init.zeros_(param.data)
+        self.out = _layer(n_gru, N_LOGITS, 0.01)
+        self.hidden = tuple(hidden)
+        self.hidden_size = n_gru
+
+    def forward(self, x, h0):
+        """x [B, L, FEATURE_DIM] normalized, h0 [B, Hg] -> (logits [B, L, N_LOGITS], h [B, Hg])."""
+        out, h = self.gru(torch.tanh(self.inp(x)), h0.unsqueeze(0))
+        return self.out(out), h.squeeze(0)
+
+    @torch.no_grad()
+    def final_state(self, x, h0):
+        """Hidden state after running x [B, L, D] from h0 (burn-in)."""
+        _, h = self.gru(torch.tanh(self.inp(x)), h0.unsqueeze(0))
+        return h.squeeze(0)
+
+
+def build_actor(arch, hidden):
+    if arch == "gru":
+        return GRUActor(hidden)
+    if arch == "mlp":
+        return Actor(hidden)
+    raise ValueError(f"unknown actor arch {arch!r}")
 
 
 class Critic(nn.Module):
@@ -66,8 +114,20 @@ def log_prob_entropy(logits, actions):
     return logp, entropy
 
 
+def _np(tensor):
+    return tensor.detach().cpu().numpy().astype(np.float32)
+
+
 def actor_to_numpy(actor):
-    """List of (W, b) float32 arrays for NumpyActor."""
+    """List of (W, b) float32 arrays for NumpyActor, or a GRU_KEYS dict for NumpyGRUActor."""
+    if isinstance(actor, GRUActor):
+        gru = actor.gru
+        return {
+            "W_in": _np(actor.inp.weight).T.copy(), "b_in": _np(actor.inp.bias).copy(),
+            "W_ih": _np(gru.weight_ih_l0).T.copy(), "b_ih": _np(gru.bias_ih_l0).copy(),
+            "W_hh": _np(gru.weight_hh_l0).T.copy(), "b_hh": _np(gru.bias_hh_l0).copy(),
+            "W_out": _np(actor.out.weight).T.copy(), "b_out": _np(actor.out.bias).copy(),
+        }
     weights = []
     for module in actor.net:
         if isinstance(module, nn.Linear):

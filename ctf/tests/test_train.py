@@ -53,3 +53,31 @@ def test_training_smoke(tmp_path):
     main(["--name", "smoke", "--runs", str(tmp_path), "--workers", "1", "--envs", "1",
           "--max-ticks", "100", "--updates", "3", "--minibatch", "256", "--learner-threads", "2"])
     assert len((tmp_path / "smoke" / "log.jsonl").read_text().splitlines()) == 3
+
+
+def test_training_smoke_gru(tmp_path):
+    from ctf.policy_io import load_policy
+
+    main(["--name", "gru", "--runs", str(tmp_path), "--arch", "gru", "--workers", "2",
+          "--envs", "2", "--max-ticks", "200", "--updates", "2", "--minibatch", "512",
+          "--chunk", "32", "--burn-in", "16", "--memory-wipe", "0.5", "--save-every", "1",
+          "--snapshot-every", "1", "--opponents", "idle:1,mirror:1,pool:1",
+          "--learner-threads", "2"])
+    log = (tmp_path / "gru" / "log.jsonl").read_text()
+    records = [json.loads(line) for line in log.splitlines()]
+    assert len(records) == 2
+    for record in records:
+        assert record["samples"] > 0 and np.isfinite(record["pi_loss"]) and record["chunks"] > 0
+        assert record["logp_drift"] < 1e-4, record["logp_drift"]
+    actor, meta = load_policy(tmp_path / "gru" / "policies" / "u00002.npz")
+    assert actor.recurrent and meta["arch"] == "gru"
+    # resume continues; an arch mismatch is refused
+    main(["--name", "gru", "--runs", str(tmp_path), "--arch", "gru", "--workers", "1",
+          "--envs", "1", "--max-ticks", "100", "--updates", "3", "--learner-threads", "2"])
+    assert len((tmp_path / "gru" / "log.jsonl").read_text().splitlines()) == 3
+    try:
+        main(["--name", "gru", "--runs", str(tmp_path), "--workers", "1", "--updates", "4"])
+    except ValueError as exc:
+        assert "arch" in str(exc)
+    else:
+        raise AssertionError("loading a gru checkpoint into an mlp actor must fail")

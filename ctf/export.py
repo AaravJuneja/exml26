@@ -5,6 +5,11 @@ weights and normalization as zlib-compressed base64 float32, and runs the
 forward pass in numpy (single-threaded BLAS) with preallocated buffers. It needs
 only the standard library and numpy, and works on Python 3.9+.
 
+A GRU policy keeps its hidden state in module globals (one process per player),
+advances it once per callback, and zeroes it whenever the inlined PlayerMemory
+starts fresh (first call, a new match with a lower tick, error recovery). It is
+kept across deaths, matching training (`ctf.rollout`).
+
     python -m ctf.export POLICY.npz OUT.py [--decode greedy|sample]
 """
 
@@ -17,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from ctf import features
-from ctf.npnets import HEAD_SIZES
+from ctf.npnets import GRU_KEYS, HEAD_SIZES
 from ctf.policy_io import load_policy
 
 FEATURES_BEGIN = "# ---- begin ctf/features.py (verbatim) ----\n"
@@ -54,29 +59,7 @@ import numpy as _mx_np
 
 '''
 
-_BODY = '''
-_MX_DECODE = {decode!r}
-_MX_HEAD_SIZES = {head_sizes!r}
-_MX_SHAPES = {shapes!r}
-_MX_BLOB = """
-{blob}"""
-
-
-def _mx_unpack():
-    raw = _mx_zlib.decompress(_mx_base64.b64decode(_MX_BLOB))
-    flat = _mx_np.frombuffer(raw, dtype="<f4").astype(_mx_np.float32)
-    arrays, start = [], 0
-    for shape in _MX_SHAPES:
-        size = 1
-        for n in shape:
-            size *= n
-        arrays.append(_mx_np.ascontiguousarray(flat[start:start + size].reshape(shape)))
-        start += size
-    if start != flat.size:
-        raise ValueError("corrupt weight blob")
-    return arrays
-
-
+_MLP_NET = '''\
 _mx_arrays = _mx_unpack()
 _MX_MEAN, _MX_STD = _mx_arrays[0], _mx_arrays[1]
 _MX_LAYERS = [(_mx_arrays[i], _mx_arrays[i + 1]) for i in range(2, len(_mx_arrays), 2)]
@@ -92,10 +75,6 @@ _MX_LOGITS = _MX_H[-1]
 _MX_HEADS = (_MX_LOGITS[:N_THROTTLE], _MX_LOGITS[N_THROTTLE:N_THROTTLE + N_TURN],
              _MX_LOGITS[N_THROTTLE + N_TURN:])
 _MX_LAST = len(_MX_LAYERS) - 1
-
-_MEMORY = PlayerMemory()
-_mx_rng = None
-_mx_errors = 0
 
 
 def _mx_forward(row):
@@ -120,6 +99,137 @@ def _mx_forward(row):
     return _MX_LOGITS
 
 
+'''
+
+_GRU_NET = '''\
+_mx_arrays = _mx_unpack()
+_MX_MEAN, _MX_STD = _mx_arrays[0], _mx_arrays[1]
+(_MX_W_IN, _MX_B_IN, _MX_W_IH, _MX_B_IH, _MX_W_HH, _MX_B_HH,
+ _MX_W_OUT, _MX_B_OUT) = _mx_arrays[2:]
+del _mx_arrays, _MX_BLOB
+if _MX_MEAN.shape != (FEATURE_DIM,) or _MX_W_IN.shape[0] != FEATURE_DIM:
+    raise ValueError("weights do not match the inlined feature encoder")
+if _MX_HEAD_SIZES != (N_THROTTLE, N_TURN, 2):
+    raise ValueError("action heads do not match the inlined action tables")
+_MX_G = _MX_W_HH.shape[0]
+if _MX_W_HH.shape != (_MX_G, 3 * _MX_G) or _MX_W_IH.shape[1] != 3 * _MX_G:
+    raise ValueError("inconsistent GRU weights")
+
+_MX_X = _mx_np.zeros(FEATURE_DIM, dtype=_mx_np.float32)
+_MX_Z = _mx_np.zeros(_MX_W_IN.shape[1], dtype=_mx_np.float32)
+_MX_GI = _mx_np.zeros(3 * _MX_G, dtype=_mx_np.float32)
+_MX_GH = _mx_np.zeros(3 * _MX_G, dtype=_mx_np.float32)
+_MX_RZ, _MX_R, _MX_U = _MX_GI[:2 * _MX_G], _MX_GI[:_MX_G], _MX_GI[_MX_G:2 * _MX_G]
+_MX_N, _MX_GHN = _MX_GI[2 * _MX_G:], _MX_GH[2 * _MX_G:]
+# Recurrent state of this player (one process per player): the hidden state
+# after its last decision, the candidate for the current one, and the state
+# before the last decision (to redo a tick that is decided twice). It lives as
+# long as _MEMORY: zeroed whenever the memory starts fresh (first call, a new
+# match with a lower tick, error recovery), kept across deaths and respawns.
+_MX_STATE = _mx_np.zeros(_MX_G, dtype=_mx_np.float32)
+_MX_NEXT = _mx_np.zeros(_MX_G, dtype=_mx_np.float32)
+_MX_PREV = _mx_np.zeros(_MX_G, dtype=_mx_np.float32)
+_mx_state_tick = None
+_MX_LOGITS = _mx_np.zeros(_MX_W_OUT.shape[1], dtype=_mx_np.float32)
+_MX_HEADS = (_MX_LOGITS[:N_THROTTLE], _MX_LOGITS[N_THROTTLE:N_THROTTLE + N_TURN],
+             _MX_LOGITS[N_THROTTLE + N_TURN:])
+
+
+def _mx_sigmoid(a):
+    # 0.5 * tanh(0.5 * a) + 0.5, in place, as in NumpyGRUActor (cannot overflow).
+    _mx_np.multiply(a, 0.5, out=a)
+    _mx_np.tanh(a, out=a)
+    _mx_np.multiply(a, 0.5, out=a)
+    _mx_np.add(a, 0.5, out=a)
+
+
+def _mx_prepare(observation):
+    """Pick the starting hidden state for this callback; call before encode."""
+    global _mx_state_tick
+    tick = int(_num(observation.get("tick"), 0))
+    if _MEMORY.last_tick is None or tick < _MEMORY.last_tick:
+        _MX_STATE[:] = 0.0
+        _mx_state_tick = None
+    elif tick == _mx_state_tick:
+        _MX_STATE[:] = _MX_PREV
+    return tick
+
+
+def _mx_commit(tick):
+    global _mx_state_tick
+    _MX_PREV[:] = _MX_STATE
+    _MX_STATE[:] = _MX_NEXT
+    _mx_state_tick = tick
+
+
+def _mx_forward(row):
+    """Logits for one feature row from _MX_STATE, written into _MX_LOGITS; the next
+    hidden state goes to _MX_NEXT (committed separately)."""
+    x = _MX_X
+    x[:] = row
+    # Some Accelerate BLAS builds raise spurious FP warnings from matmul.
+    with _mx_np.errstate(all="ignore"):
+        _mx_np.subtract(x, _MX_MEAN, out=x)
+        _mx_np.divide(x, _MX_STD, out=x)
+        _mx_np.clip(x, -5.0, 5.0, out=x)
+        _mx_np.matmul(x, _MX_W_IN, out=_MX_Z)
+        _mx_np.add(_MX_Z, _MX_B_IN, out=_MX_Z)
+        _mx_np.tanh(_MX_Z, out=_MX_Z)
+        _mx_np.matmul(_MX_Z, _MX_W_IH, out=_MX_GI)
+        _mx_np.add(_MX_GI, _MX_B_IH, out=_MX_GI)
+        _mx_np.matmul(_MX_STATE, _MX_W_HH, out=_MX_GH)
+        _mx_np.add(_MX_GH, _MX_B_HH, out=_MX_GH)
+        _mx_np.add(_MX_RZ, _MX_GH[:2 * _MX_G], out=_MX_RZ)
+        _mx_sigmoid(_MX_RZ)
+        _mx_np.multiply(_MX_R, _MX_GHN, out=_MX_GHN)
+        _mx_np.add(_MX_N, _MX_GHN, out=_MX_N)
+        _mx_np.tanh(_MX_N, out=_MX_N)
+        nxt = _MX_NEXT
+        _mx_np.subtract(_MX_STATE, _MX_N, out=nxt)
+        _mx_np.multiply(_MX_U, nxt, out=nxt)
+        _mx_np.add(_MX_N, nxt, out=nxt)
+        _mx_np.matmul(nxt, _MX_W_OUT, out=_MX_LOGITS)
+        _mx_np.add(_MX_LOGITS, _MX_B_OUT, out=_MX_LOGITS)
+    if not _mx_math.isfinite(float(_MX_LOGITS.sum())):
+        raise FloatingPointError("non-finite logits")
+    return _MX_LOGITS
+
+
+'''
+
+_MLP_CALL = "    _mx_forward(encode(observation, _MEMORY))"
+_GRU_CALL = """    tick = _mx_prepare(observation)
+    _mx_forward(encode(observation, _MEMORY))
+    _mx_commit(tick)"""
+
+_BODY = '''
+_MX_DECODE = {decode!r}
+_MX_HEAD_SIZES = {head_sizes!r}
+_MX_SHAPES = {shapes!r}
+_MX_BLOB = """
+{blob}"""
+
+
+def _mx_unpack():
+    raw = _mx_zlib.decompress(_mx_base64.b64decode(_MX_BLOB))
+    flat = _mx_np.frombuffer(raw, dtype="<f4").astype(_mx_np.float32)
+    arrays, start = [], 0
+    for shape in _MX_SHAPES:
+        size = 1
+        for n in shape:
+            size *= n
+        arrays.append(_mx_np.ascontiguousarray(flat[start:start + size].reshape(shape)))
+        start += size
+    if start != flat.size:
+        raise ValueError("corrupt weight blob")
+    return arrays
+
+
+{net}_MEMORY = PlayerMemory()
+_mx_rng = None
+_mx_errors = 0
+
+
 def _mx_sample(head):
     # Inverse-CDF draw: same softmax distribution as NumpyActor's Gumbel-max,
     # but a different random stream, so sampled games are not bit-identical.
@@ -131,7 +241,7 @@ def _mx_sample(head):
 
 def _mx_choose(observation):
     global _mx_rng
-    _mx_forward(encode(observation, _MEMORY))
+{forward_call}
     throttle, turn, jump = _MX_HEADS
     if _MX_DECODE == "sample":
         if _mx_rng is None:
@@ -218,8 +328,18 @@ def render(policy_path, *, decode="greedy"):
         raise ValueError(f"decode must be one of {DECODES}, got {decode!r}")
     actor, _ = load_policy(policy_path)
     arrays = [actor.obs_mean.astype(np.float32), actor.obs_std.astype(np.float32)]
-    for w, b in actor.weights:
-        arrays += [np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32)]
+    if actor.recurrent:
+        w = actor.weights
+        arrays += [np.asarray(w[key], dtype=np.float32) for key in GRU_KEYS]
+        layers = (f"{w['W_in'].shape[0]} -> {w['W_in'].shape[1]} -> GRU {actor.hidden_size}"
+                  f" -> {w['W_out'].shape[1]}")
+        net, forward_call = _GRU_NET, _GRU_CALL
+    else:
+        for w, b in actor.weights:
+            arrays += [np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32)]
+        layers = (" -> ".join(str(w.shape[0]) for w, _ in actor.weights)
+                  + f" -> {arrays[-1].shape[0]}")
+        net, forward_call = _MLP_NET, _MLP_CALL
     if not np.all(actor.obs_std > 0):
         raise ValueError("obs_std must be positive")
     if not all(np.all(np.isfinite(a)) for a in arrays):
@@ -233,11 +353,11 @@ def render(policy_path, *, decode="greedy"):
     if "_mx_" in source.lower():
         raise ValueError("features.py uses the reserved _mx_ prefix")
     digest = hashlib.sha256(Path(policy_path).read_bytes()).hexdigest()
-    layers = " -> ".join(str(w.shape[0]) for w, _ in actor.weights) + f" -> {arrays[-1].shape[0]}"
     header = _HEADER.format(source=Path(policy_path).name, digest=digest, layers=layers,
                             decode=decode)
     body = _BODY.format(decode=decode, head_sizes=tuple(HEAD_SIZES),
-                        shapes=[tuple(a.shape) for a in arrays], blob=_pack(arrays))
+                        shapes=[tuple(a.shape) for a in arrays], blob=_pack(arrays),
+                        net=net, forward_call=forward_call)
     return header + FEATURES_BEGIN + source.rstrip("\n") + "\n" + FEATURES_END + body
 
 

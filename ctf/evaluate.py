@@ -10,7 +10,8 @@ Player specs (strings or `PlayerSpec`)
     idle                       does nothing
     baseline|example|example2  provided scripted models
     path/to/model.py           any module with `decide(observation)`
-    path/to/policy.npz         batched NumpyActor over three PlayerMemory objects
+    path/to/policy.npz         batched NumpyActor (or NumpyGRUActor with per-player hidden
+                               state) over three PlayerMemory objects
 
 Options follow an `@`, comma separated:
     @greedy      argmax actions (default for .npz)
@@ -59,7 +60,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ctf.features import FEATURE_DIM, THROTTLE_VALUES, TURN_VALUES, PlayerMemory, encode
+from ctf.features import THROTTLE_VALUES, TURN_VALUES, PlayerMemory, encode
+from ctf.npnets import PolicyMemories
 from ctf.policies import ROOT, SCRIPTED
 from ctf.sim import DOCUMENTED_KEYS, Match
 
@@ -339,14 +341,18 @@ class _ProcessTeam:
 
 
 class _PolicyTeam:
-    """Batched NumpyActor: one feature batch and one forward pass per tick."""
+    """Batched NumpyActor / NumpyGRUActor: one feature batch and one forward pass per tick.
+
+    A GRU's per-player hidden state advances only on that player's callbacks and
+    resets with its PlayerMemory, as in the exported model."""
 
     def __init__(self, spec, sphere_ids, rng):
         self.actor, self.digest = _loaded(spec)
         self.greedy = spec.greedy
         self.rng = rng
         self.ids = sorted(sphere_ids)
-        self.memories = {sid: PlayerMemory() for sid in self.ids}
+        self.state = PolicyMemories(self.actor, self.ids, encode, PlayerMemory)
+        self.memories = self.state.memories
         self.errors = 0
         self.times = []
 
@@ -355,13 +361,10 @@ class _PolicyTeam:
         if not ids:
             return {}
         start = time.perf_counter()
-        batch = np.empty((len(ids), FEATURE_DIM), dtype=np.float32)
-        for row, sid in enumerate(ids):
-            batch[row] = encode(_documented(observations[sid]), self.memories[sid])
-        chosen, _ = self.actor.sample(batch, self.rng, self.greedy)
+        batch = self.state.encode_batch(ids, [_documented(observations[sid]) for sid in ids])
+        chosen = self.state.act(ids, batch, self.rng, self.greedy)
         actions = {}
         for sid, (throttle, turn, jump) in zip(ids, chosen.tolist()):
-            self.memories[sid].set_action(throttle, turn, jump)
             actions[sid] = (THROTTLE_VALUES[throttle], TURN_VALUES[turn], bool(jump))
         self.times.append(time.perf_counter() - start)
         return actions
