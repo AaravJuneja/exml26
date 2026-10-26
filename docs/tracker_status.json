@@ -1,5 +1,5 @@
 {
- "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. <b>A/B now:</b> m5a (v5 memory features) vs m4c (v4). In progress: releasing m4c's best snapshot as <code>teams/exml_rl</code> via the full release pipeline.",
+ "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. <b>A/B now:</b> m5a (v5 memory features) vs m4c (v4). <b>First real submission released: <code>teams/exml_rl/model.py</code></b> (m4c u210). Audit and deployed-file parity PASS. Latency PASS on a quiet machine: p99 0.29 ms, max 3.1 ms (with 6 CPU-burning processes: p99 1.4 ms, max 14 ms; the limit is 30 ms). Held-out: 54% wins overall vs 10 bots (table below). Up from 41% for the first candidate.",
  "milestones": [
   {
    "id": "M0",
@@ -40,76 +40,76 @@
   {
    "id": "M6",
    "title": "Freeze, export, final 64-seed test, latency audit",
-   "state": "todo",
-   "note": ""
+   "state": "active",
+   "note": "Release pipeline built; teams/exml_rl released (will be re-released as the policy improves)"
   }
  ],
  "eval_header": [
-  "Release candidate exml_rl_candidate (m4a u70) vs",
-  "W-D-L (64 games)",
+  "teams/exml_rl (m4c u210) vs (held-out seeds 5000-5031, both sides)",
+  "W-D-L",
   "win %",
   "goal diff"
  ],
  "eval_rows": [
   [
    "baseline",
-   "54-4-6",
-   "84",
-   "+2.92"
+   "59-2-3",
+   "92",
+   "+3.47"
   ],
   [
    "example",
-   "60-4-0",
-   "94",
-   "+4.03"
+   "62-2-0",
+   "97",
+   "+5.47"
   ],
   [
    "example2",
-   "63-1-0",
-   "98",
-   "+4.62"
+   "64-0-0",
+   "100",
+   "+5.72"
   ],
   [
    "relay",
-   "6-1-57",
+   "6-3-55",
    "9",
-   "-5.50"
+   "-4.47"
   ],
   [
    "balanced",
-   "2-0-62",
-   "3",
-   "-5.80"
+   "10-5-49",
+   "16",
+   "-3.53"
   ],
   [
    "guardian",
-   "3-8-53",
-   "5",
-   "-2.50"
+   "20-7-37",
+   "31",
+   "-1.09"
   ],
   [
    "rusher",
-   "9-14-41",
-   "14",
-   "-1.47"
+   "33-9-22",
+   "52",
+   "+0.08"
   ],
   [
    "camper",
-   "17-11-36",
-   "27",
-   "-1.38"
+   "20-12-32",
+   "31",
+   "-0.34"
   ],
   [
    "chaos",
-   "16-5-43",
-   "25",
-   "-1.98"
+   "25-6-33",
+   "39",
+   "-0.56"
   ],
   [
    "steady",
-   "31-15-18",
-   "48",
-   "+0.91"
+   "43-9-12",
+   "67",
+   "+2.14"
   ]
  ],
  "runs": [
@@ -177,6 +177,10 @@
   {
    "time": "2026-10-26 12:00",
    "text": "m4c (lower entropy, higher \u03bb) slightly beats m4b: guardian/rusher/camper ~50% held-out. v5 features + strict migration done (reviewed). A/B v5 vs v4 running. Releasing m4c as teams/exml_rl."
+  },
+  {
+   "time": "2026-10-26 12:45",
+   "text": "Released teams/exml_rl (m4c u210): 54% overall vs 10 bots; baseline 92%; latency p99 0.29 ms on a quiet machine."
   }
  ]
 }
