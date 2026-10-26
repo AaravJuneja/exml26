@@ -146,3 +146,20 @@ def test_adaptive_mix_shifts_weight_to_harder_opponents(tmp_path):
     p = dict(zip(names, probs))
     assert p["relay"] > 5 * p["baseline"]
     assert abs(sum(probs) - 1) < 1e-9 and p["mirror"] > 0
+
+
+def test_net2wider_preserves_function():
+    import torch
+
+    from ctf.nets import Actor, Critic
+    from ctf.train import widen_mlp
+
+    torch.manual_seed(0)
+    small, big = Actor((32, 32)), Actor((64, 80))
+    wide = widen_mlp(small.state_dict(), (64, 80), np.random.default_rng(0), noise=0.0)
+    big.load_state_dict(wide)
+    x = torch.randn(50, small.net[0].in_features)
+    assert torch.allclose(small(x), big(x), atol=1e-5)
+    c_small, c_big = Critic((16, 16)), Critic((48, 48))
+    c_big.load_state_dict(widen_mlp(c_small.state_dict(), (48, 48), np.random.default_rng(1), 0.0))
+    assert torch.allclose(c_small(x), c_big(x), atol=1e-5)

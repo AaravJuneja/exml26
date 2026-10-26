@@ -187,6 +187,35 @@ def expand_features(state, old_dim):
     return state
 
 
+def widen_mlp(weights, new_hidden, rng, noise=1e-4):
+    """Net2WiderNet for a Sequential of Linear/Tanh layers stored as net.{i}.weight/bias.
+
+    Each new hidden unit copies a random existing unit's incoming weights; the
+    outgoing weights of every copied unit are divided by its number of copies, so
+    the network computes the same function (up to `noise` added to break symmetry).
+    """
+    linear = sorted({int(k.split(".")[1]) for k in weights if k.startswith("net.")})
+    out = dict(weights)
+    for layer, target in zip(linear[:-1], new_hidden):
+        w_in, b_in = out[f"net.{layer}.weight"], out[f"net.{layer}.bias"]
+        nxt = linear[linear.index(layer) + 1]
+        w_out = out[f"net.{nxt}.weight"]
+        old = w_in.shape[0]
+        if target < old:
+            raise ValueError(f"cannot shrink layer {layer} from {old} to {target}")
+        if target == old:
+            continue
+        mapping = torch.cat([torch.arange(old),
+                             torch.as_tensor(rng.integers(0, old, target - old))])
+        counts = torch.bincount(mapping, minlength=old).to(w_out.dtype)
+        new_w_in = w_in[mapping].clone()
+        new_w_in[old:] += noise * torch.randn_like(new_w_in[old:])
+        out[f"net.{layer}.weight"] = new_w_in
+        out[f"net.{layer}.bias"] = b_in[mapping].clone()
+        out[f"net.{nxt}.weight"] = (w_out / counts)[:, mapping].clone()
+    return out
+
+
 def parse_mix(text):
     mix = []
     for part in text.split(","):
@@ -260,6 +289,17 @@ class Trainer:
                 raise ValueError(f"{path} uses {old_dim} features; resume needs {F.FEATURE_DIM}"
                                  " (use --init to warm-start with feature surgery)")
             state = expand_features(state, old_dim)
+        if weights_only and self.args.arch == "mlp":
+            # Net2WiderNet when the requested network is wider than the checkpoint.
+            actor_hidden = [t.shape[0] for k, t in sorted(state["actor"].items())
+                            if k.endswith(".weight")][:-1]
+            if list(self.args.hidden) != actor_hidden:
+                state = dict(state, actor=widen_mlp(state["actor"], self.args.hidden, self.rng))
+            critic_hidden = [t.shape[0] for k, t in sorted(state["critic"].items())
+                             if k.endswith(".weight")][:-1]
+            if list(self.args.critic_hidden) != critic_hidden:
+                state = dict(state, critic=widen_mlp(state["critic"], self.args.critic_hidden,
+                                                     self.rng))
         self.actor.load_state_dict(state["actor"])
         self.critic.load_state_dict(state["critic"])
         self.norm.load(state["norm"])
