@@ -187,8 +187,8 @@ def test_parity_catches_wrong_weights(tmp_path, policy):
 def test_bad_model_stops_release(tmp_path, policy, monkeypatch):
     original = R.export_release
 
-    def export_then_break(policy_path, out_dir):
-        info = original(policy_path, out_dir)
+    def export_then_break(policy_path, out_dir, decode="greedy"):
+        info = original(policy_path, out_dir, decode)
         path = R.Path(info["model"])
         path.write_text(path.read_text() + "\n_X = {}.get('teammates')\n")
         return info

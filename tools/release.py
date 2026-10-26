@@ -101,8 +101,12 @@ def provenance(policy_path):
             "sha256": sha256(policy_path), "meta": meta}
 
 
-def export_release(policy_path, out_dir):
-    """Write model.py (greedy), policy.npz and README.md into out_dir; return info."""
+def export_release(policy_path, out_dir, decode="greedy"):
+    """Write model.py (`decode`), policy.npz and README.md into out_dir; return info.
+
+    With decode="sample" a greedy twin `.parity_greedy_model.py` is also written: the
+    parity check runs on it (same network, features and controller; sampled play cannot
+    match record-for-record), while the gauntlet and latency use the deployed file."""
     from ctf.export import export
 
     out_dir = Path(out_dir)
@@ -112,10 +116,14 @@ def export_release(policy_path, out_dir):
     copy = out_dir / "policy.npz"
     if copy.resolve() != policy_path:
         shutil.copyfile(policy_path, copy)
-    model = export(copy, out_dir / "model.py", decode="greedy")
+    model = export(copy, out_dir / "model.py", decode=decode)
+    twin = model
+    if decode != "greedy":
+        twin = export(copy, out_dir / ".parity_greedy_model.py", decode="greedy")
     info.update({
         "policy_copy": str(copy), "model": str(model), "model_sha256": sha256(model),
-        "model_kib": round(model.stat().st_size / 1024, 1), "decode": "greedy",
+        "parity_model": str(twin),
+        "model_kib": round(model.stat().st_size / 1024, 1), "decode": decode,
         "date": _now(),
     })
     if sha256(copy) != info["sha256"]:
@@ -495,6 +503,38 @@ def run_latency(model_path, ticks, stress, seed, workdir=None, timeout=3600):
             "summary": summary}
 
 
+TRAINING_PATTERN = "ctf.train|auto_eval|tools/ab_compare|tools/gallery"
+
+
+def pause_training(enabled):
+    """SIGSTOP local training/evaluation jobs so latency is measured on a quiet machine."""
+    if not enabled:
+        return False
+    subprocess.run(["pkill", "-STOP", "-f", TRAINING_PATTERN], check=False)
+    for pid in _children_of_pattern():
+        subprocess.run(["kill", "-STOP", pid], check=False)
+    time.sleep(3)
+    return True
+
+
+def resume_training(paused):
+    if not paused:
+        return
+    for pid in _children_of_pattern():
+        subprocess.run(["kill", "-CONT", pid], check=False)
+    subprocess.run(["pkill", "-CONT", "-f", TRAINING_PATTERN], check=False)
+
+
+def _children_of_pattern():
+    """Worker processes (multiprocessing children) of the paused jobs."""
+    out = subprocess.run(["pgrep", "-f", TRAINING_PATTERN], capture_output=True, text=True)
+    pids = []
+    for parent in out.stdout.split():
+        kids = subprocess.run(["pgrep", "-P", parent], capture_output=True, text=True)
+        pids += kids.stdout.split()
+    return pids
+
+
 def machine_load():
     try:
         return [round(x, 2) for x in os.getloadavg()]
@@ -760,7 +800,7 @@ def release(args):
     incomplete = []
 
     _log(f"[1/5] export {args.policy} -> {out_dir}/model.py")
-    info = export_release(args.policy, out_dir)
+    info = export_release(args.policy, out_dir, args.decode)
     report["policy"] = {k: v for k, v in info.items() if k != "meta"}
     report["policy"]["meta"] = info["meta"]
     model = Path(info["model"])
@@ -780,7 +820,8 @@ def release(args):
 
     if go_on:
         _log(f"[3/5] parity against {args.parity_opponent} on seeds {parity_seeds}")
-        report["parity"] = parity(model, info["policy_copy"], args.parity_opponent, parity_seeds,
+        report["parity"] = parity(Path(info["parity_model"]), info["policy_copy"],
+                                  args.parity_opponent, parity_seeds,
                                   args.max_ticks, args.workers, progress, args.strict_parity)
         _log(f"      {_mark(report['parity']['pass'])} "
              f"{[g['status'] for g in report['parity']['games']]}")
@@ -790,12 +831,17 @@ def release(args):
     if args.skip_latency:
         incomplete.append("latency skipped")
     elif go_on:
-        for stress in (0, args.stress):
-            _log(f"[4/5] latency: {args.latency_ticks} ticks, stress {stress}")
-            run = run_latency(model, args.latency_ticks, stress, args.latency_seed,
-                              args.latency_workdir)
-            _log(f"      {_mark(run['pass'])} callback {run.get('callback', {})}")
-            lat["runs"].append(run)
+        paused = pause_training(args.pause_training)
+        lat["training_paused"] = paused
+        try:
+            for stress in (0, args.stress):
+                _log(f"[4/5] latency: {args.latency_ticks} ticks, stress {stress}")
+                run = run_latency(model, args.latency_ticks, stress, args.latency_seed,
+                                  args.latency_workdir)
+                _log(f"      {_mark(run['pass'])} callback {run.get('callback', {})}")
+                lat["runs"].append(run)
+        finally:
+            resume_training(paused)
         if args.latency_ticks < FULL_TICKS:
             incomplete.append(f"latency ran {args.latency_ticks} of {FULL_TICKS} ticks")
     report["latency"] = lat
@@ -870,6 +916,10 @@ def build_parser():
     p.add_argument("--stress", type=int, default=DEFAULT_STRESS,
                    help="busy-loop processes for the second latency run")
     p.add_argument("--skip-latency", action="store_true")
+    p.add_argument("--decode", choices=("greedy", "sample"), default="greedy",
+                   help="decoding of the deployed model.py (parity runs on a greedy twin)")
+    p.add_argument("--pause-training", action="store_true",
+                   help="SIGSTOP training/eval jobs on this machine during the latency step")
     p.add_argument("--max-kib", type=float, default=DEFAULT_MAX_KIB)
     p.add_argument("--py39", help=f"Python 3.9 for the load smoke test (default $EXML_PY39 or "
                                   f"{PY39_DEFAULT}; '' to skip)")
