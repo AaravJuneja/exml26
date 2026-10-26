@@ -48,11 +48,14 @@ Working log. The summary is `docs/tracker.html`.
 | m3a | From m2e, scripted mix plus mirror, win-coef 0.3 | Stopped after round 3 (norm re-opened by `--init`; bootstrapped win head) |
 | m3b | Same mix, round-3 fixes | Stopped at u~160. Held-out u150: baseline 44%, relay 6%, others 0–3% |
 | m3c | Features v2 (clear-ground map + rays), warm-start from m3b via surgery | Stopped at u~115. Held-out u50: baseline **78%**, relay 3%, balanced 3%, guardian 3%, camper 9% |
-| m3d | Features v3 fixes (exact traversal, grounded evidence), from m3c weights; GPU learner, pipelined, minibatch 16384 | running at ~27k ticks/s (cycle about 7 s) |
+| m3d | Features v3 fixes, from m3c weights; GPU learner, pipelined, minibatch 16384; from u716 with adaptive mix and the faster rollouts | running. Held-out: u300 baseline 94%; u450 baseline 97%, camper 25%, relay 9%, balanced 6% |
 
 ## Throughput notes
 - **Pipelining alone:** about 10% faster, because the learner on 6–8 CPU threads competed with the workers.
 - **GPU:** 10 ms vs 107 ms per 16k-sample step under load. Removing per-step `.item()` syncs and using minibatch 16384 cut the update to about 4.5 s. Rollouts are now the bottleneck: about 27k ticks/s ≈ 290M samples/h.
+
+- **Rollout optimisation:** `collect()` is 1.43× faster (median 2.09 s → 1.46 s). Changes: features 60 → 42 µs; a broad-phase cell cache in `sim`; bounding-box line-of-sight rejection; a single-draw sampler. Equivalence is pinned by hash fixtures (`ctf/tests/test_equivalence.py`); the original code was kept in `perf_orig/`. Scripted bots are now compiled once per process.
+- **Current cycle:** about 6 s with the learner update (about 5 s) as the bottleneck; about 30k ticks/s.
 
 ## Diagnosis notes
 - **m3b vs relay (seed 1003): lost 2–19.** Relay players average 11–13 u/s (above 11 for 54–73% of the time); ours average 6 u/s (above 11 for 4–9%). We had 13 player deaths and relay 4; pickups 6 vs 20. Cause: no information about safe ground, so we could not sprint. Fix: features v2.

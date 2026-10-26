@@ -136,6 +136,10 @@
   {
    "time": "2026-10-26 04:15",
    "text": "m3d u300: baseline 94%, camper 22%, guardian/rusher 16%, relay 6%, balanced 3%. Replay vs relay: 7-14 (was 2-19)."
+  },
+  {
+   "time": "2026-10-26 05:05",
+   "text": "Rollouts 1.43x faster (bit-identical, fixture-tested). Adaptive opponent mix on (shifts training toward relay/balanced etc.). m3d u450: baseline 97%, camper 25%, relay 9%, balanced 6%."
   }
  ]
 }
