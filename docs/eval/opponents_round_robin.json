@@ -1,0 +1,936 @@
+{
+ "seeds": "2000-2015",
+ "ticks": 6000,
+ "both_sides": true,
+ "notes": "W/D/L by goals; gf/ga goals for/against; wall = own wall deaths; killed = own deaths by enemy ram. Provided bots get backend extras; opponents/* get documented keys only.",
+ "summary": {
+  "rusher": {
+   "W": 193,
+   "D": 23,
+   "L": 72,
+   "gf": 2303,
+   "ga": 1470,
+   "wall": 15,
+   "killed": 2710
+  },
+  "guardian": {
+   "W": 174,
+   "D": 28,
+   "L": 86,
+   "gf": 1808,
+   "ga": 1205,
+   "wall": 25,
+   "killed": 5145
+  },
+  "camper": {
+   "W": 172,
+   "D": 13,
+   "L": 103,
+   "gf": 2129,
+   "ga": 1313,
+   "wall": 19,
+   "killed": 5086
+  },
+  "relay": {
+   "W": 252,
+   "D": 10,
+   "L": 26,
+   "gf": 3130,
+   "ga": 1210,
+   "wall": 10,
+   "killed": 3813
+  },
+  "balanced": {
+   "W": 242,
+   "D": 10,
+   "L": 36,
+   "gf": 2978,
+   "ga": 1219,
+   "wall": 23,
+   "killed": 4145
+  },
+  "chaos": {
+   "W": 160,
+   "D": 10,
+   "L": 118,
+   "gf": 2080,
+   "ga": 1527,
+   "wall": 7,
+   "killed": 4585
+  },
+  "steady": {
+   "W": 96,
+   "D": 7,
+   "L": 185,
+   "gf": 1187,
+   "ga": 1744,
+   "wall": 0,
+   "killed": 6278
+  },
+  "baseline": {
+   "W": 53,
+   "D": 13,
+   "L": 222,
+   "gf": 389,
+   "ga": 2184,
+   "wall": 0,
+   "killed": 4964
+  },
+  "example": {
+   "W": 1,
+   "D": 41,
+   "L": 246,
+   "gf": 22,
+   "ga": 2039,
+   "wall": 19402,
+   "killed": 1974
+  },
+  "example2": {
+   "W": 0,
+   "D": 39,
+   "L": 249,
+   "gf": 12,
+   "ga": 2127,
+   "wall": 20244,
+   "killed": 1944
+  }
+ },
+ "seats": {
+  "red_wins": 685,
+  "blue_wins": 658,
+  "draws": 97
+ },
+ "pairs": {
+  "rusher": {
+   "guardian": {
+    "W": 8,
+    "D": 12,
+    "L": 12,
+    "gf": 228,
+    "ga": 241,
+    "wall": 2,
+    "killed": 494
+   },
+   "camper": {
+    "W": 26,
+    "D": 3,
+    "L": 3,
+    "gf": 251,
+    "ga": 187,
+    "wall": 1,
+    "killed": 344
+   },
+   "relay": {
+    "W": 2,
+    "D": 1,
+    "L": 29,
+    "gf": 242,
+    "ga": 362,
+    "wall": 1,
+    "killed": 411
+   },
+   "balanced": {
+    "W": 9,
+    "D": 2,
+    "L": 21,
+    "gf": 245,
+    "ga": 282,
+    "wall": 2,
+    "killed": 416
+   },
+   "chaos": {
+    "W": 21,
+    "D": 4,
+    "L": 7,
+    "gf": 257,
+    "ga": 211,
+    "wall": 1,
+    "killed": 321
+   },
+   "steady": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 280,
+    "ga": 121,
+    "wall": 0,
+    "killed": 213
+   },
+   "baseline": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 286,
+    "ga": 63,
+    "wall": 1,
+    "killed": 64
+   },
+   "example": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 259,
+    "ga": 2,
+    "wall": 4,
+    "killed": 226
+   },
+   "example2": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 255,
+    "ga": 1,
+    "wall": 3,
+    "killed": 221
+   }
+  },
+  "guardian": {
+   "rusher": {
+    "W": 12,
+    "D": 12,
+    "L": 8,
+    "gf": 241,
+    "ga": 228,
+    "wall": 2,
+    "killed": 720
+   },
+   "camper": {
+    "W": 14,
+    "D": 5,
+    "L": 13,
+    "gf": 153,
+    "ga": 155,
+    "wall": 1,
+    "killed": 819
+   },
+   "relay": {
+    "W": 2,
+    "D": 3,
+    "L": 27,
+    "gf": 173,
+    "ga": 286,
+    "wall": 4,
+    "killed": 986
+   },
+   "balanced": {
+    "W": 2,
+    "D": 2,
+    "L": 28,
+    "gf": 154,
+    "ga": 285,
+    "wall": 4,
+    "killed": 967
+   },
+   "chaos": {
+    "W": 18,
+    "D": 4,
+    "L": 10,
+    "gf": 217,
+    "ga": 180,
+    "wall": 2,
+    "killed": 625
+   },
+   "steady": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 229,
+    "ga": 59,
+    "wall": 3,
+    "killed": 418
+   },
+   "baseline": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 239,
+    "ga": 6,
+    "wall": 4,
+    "killed": 91
+   },
+   "example": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 198,
+    "ga": 5,
+    "wall": 3,
+    "killed": 266
+   },
+   "example2": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 204,
+    "ga": 1,
+    "wall": 2,
+    "killed": 253
+   }
+  },
+  "camper": {
+   "rusher": {
+    "W": 3,
+    "D": 3,
+    "L": 26,
+    "gf": 187,
+    "ga": 251,
+    "wall": 1,
+    "killed": 771
+   },
+   "guardian": {
+    "W": 13,
+    "D": 5,
+    "L": 14,
+    "gf": 155,
+    "ga": 153,
+    "wall": 3,
+    "killed": 710
+   },
+   "relay": {
+    "W": 4,
+    "D": 1,
+    "L": 27,
+    "gf": 180,
+    "ga": 297,
+    "wall": 3,
+    "killed": 982
+   },
+   "balanced": {
+    "W": 5,
+    "D": 3,
+    "L": 24,
+    "gf": 197,
+    "ga": 274,
+    "wall": 5,
+    "killed": 909
+   },
+   "chaos": {
+    "W": 21,
+    "D": 0,
+    "L": 11,
+    "gf": 220,
+    "ga": 196,
+    "wall": 5,
+    "killed": 693
+   },
+   "steady": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 279,
+    "ga": 99,
+    "wall": 0,
+    "killed": 526
+   },
+   "baseline": {
+    "W": 31,
+    "D": 0,
+    "L": 1,
+    "gf": 299,
+    "ga": 37,
+    "wall": 1,
+    "killed": 159
+   },
+   "example": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 309,
+    "ga": 4,
+    "wall": 0,
+    "killed": 170
+   },
+   "example2": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 303,
+    "ga": 2,
+    "wall": 1,
+    "killed": 166
+   }
+  },
+  "relay": {
+   "rusher": {
+    "W": 29,
+    "D": 1,
+    "L": 2,
+    "gf": 362,
+    "ga": 242,
+    "wall": 0,
+    "killed": 490
+   },
+   "guardian": {
+    "W": 27,
+    "D": 3,
+    "L": 2,
+    "gf": 286,
+    "ga": 173,
+    "wall": 4,
+    "killed": 639
+   },
+   "camper": {
+    "W": 27,
+    "D": 1,
+    "L": 4,
+    "gf": 297,
+    "ga": 180,
+    "wall": 1,
+    "killed": 621
+   },
+   "balanced": {
+    "W": 15,
+    "D": 2,
+    "L": 15,
+    "gf": 273,
+    "ga": 260,
+    "wall": 2,
+    "killed": 730
+   },
+   "chaos": {
+    "W": 28,
+    "D": 1,
+    "L": 3,
+    "gf": 341,
+    "ga": 188,
+    "wall": 0,
+    "killed": 482
+   },
+   "steady": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 351,
+    "ga": 121,
+    "wall": 2,
+    "killed": 307
+   },
+   "baseline": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 416,
+    "ga": 45,
+    "wall": 0,
+    "killed": 79
+   },
+   "example": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 375,
+    "ga": 1,
+    "wall": 1,
+    "killed": 276
+   },
+   "example2": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 429,
+    "ga": 0,
+    "wall": 0,
+    "killed": 189
+   }
+  },
+  "balanced": {
+   "rusher": {
+    "W": 21,
+    "D": 2,
+    "L": 9,
+    "gf": 282,
+    "ga": 245,
+    "wall": 3,
+    "killed": 618
+   },
+   "guardian": {
+    "W": 28,
+    "D": 2,
+    "L": 2,
+    "gf": 285,
+    "ga": 154,
+    "wall": 5,
+    "killed": 590
+   },
+   "camper": {
+    "W": 24,
+    "D": 3,
+    "L": 5,
+    "gf": 274,
+    "ga": 197,
+    "wall": 3,
+    "killed": 626
+   },
+   "relay": {
+    "W": 15,
+    "D": 2,
+    "L": 15,
+    "gf": 260,
+    "ga": 273,
+    "wall": 1,
+    "killed": 858
+   },
+   "chaos": {
+    "W": 28,
+    "D": 0,
+    "L": 4,
+    "gf": 325,
+    "ga": 202,
+    "wall": 6,
+    "killed": 553
+   },
+   "steady": {
+    "W": 31,
+    "D": 0,
+    "L": 1,
+    "gf": 312,
+    "ga": 105,
+    "wall": 2,
+    "killed": 386
+   },
+   "baseline": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 414,
+    "ga": 40,
+    "wall": 0,
+    "killed": 101
+   },
+   "example": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 391,
+    "ga": 3,
+    "wall": 1,
+    "killed": 232
+   },
+   "example2": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 435,
+    "ga": 0,
+    "wall": 2,
+    "killed": 181
+   }
+  },
+  "chaos": {
+   "rusher": {
+    "W": 7,
+    "D": 4,
+    "L": 21,
+    "gf": 211,
+    "ga": 257,
+    "wall": 2,
+    "killed": 672
+   },
+   "guardian": {
+    "W": 10,
+    "D": 4,
+    "L": 18,
+    "gf": 180,
+    "ga": 217,
+    "wall": 2,
+    "killed": 611
+   },
+   "camper": {
+    "W": 11,
+    "D": 0,
+    "L": 21,
+    "gf": 196,
+    "ga": 220,
+    "wall": 0,
+    "killed": 699
+   },
+   "relay": {
+    "W": 3,
+    "D": 1,
+    "L": 28,
+    "gf": 188,
+    "ga": 341,
+    "wall": 0,
+    "killed": 887
+   },
+   "balanced": {
+    "W": 4,
+    "D": 0,
+    "L": 28,
+    "gf": 202,
+    "ga": 325,
+    "wall": 1,
+    "killed": 759
+   },
+   "steady": {
+    "W": 29,
+    "D": 1,
+    "L": 2,
+    "gf": 264,
+    "ga": 123,
+    "wall": 1,
+    "killed": 418
+   },
+   "baseline": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 311,
+    "ga": 38,
+    "wall": 0,
+    "killed": 111
+   },
+   "example": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 272,
+    "ga": 4,
+    "wall": 1,
+    "killed": 224
+   },
+   "example2": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 256,
+    "ga": 2,
+    "wall": 0,
+    "killed": 204
+   }
+  },
+  "steady": {
+   "rusher": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 121,
+    "ga": 280,
+    "wall": 0,
+    "killed": 797
+   },
+   "guardian": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 59,
+    "ga": 229,
+    "wall": 0,
+    "killed": 844
+   },
+   "camper": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 99,
+    "ga": 279,
+    "wall": 0,
+    "killed": 950
+   },
+   "relay": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 121,
+    "ga": 351,
+    "wall": 0,
+    "killed": 1234
+   },
+   "balanced": {
+    "W": 1,
+    "D": 0,
+    "L": 31,
+    "gf": 105,
+    "ga": 312,
+    "wall": 0,
+    "killed": 1075
+   },
+   "chaos": {
+    "W": 2,
+    "D": 1,
+    "L": 29,
+    "gf": 123,
+    "ga": 264,
+    "wall": 0,
+    "killed": 799
+   },
+   "baseline": {
+    "W": 32,
+    "D": 0,
+    "L": 0,
+    "gf": 215,
+    "ga": 24,
+    "wall": 0,
+    "killed": 108
+   },
+   "example": {
+    "W": 31,
+    "D": 1,
+    "L": 0,
+    "gf": 169,
+    "ga": 0,
+    "wall": 0,
+    "killed": 250
+   },
+   "example2": {
+    "W": 30,
+    "D": 2,
+    "L": 0,
+    "gf": 175,
+    "ga": 5,
+    "wall": 0,
+    "killed": 221
+   }
+  },
+  "baseline": {
+   "rusher": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 63,
+    "ga": 286,
+    "wall": 0,
+    "killed": 489
+   },
+   "guardian": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 6,
+    "ga": 239,
+    "wall": 0,
+    "killed": 637
+   },
+   "camper": {
+    "W": 1,
+    "D": 0,
+    "L": 31,
+    "gf": 37,
+    "ga": 299,
+    "wall": 0,
+    "killed": 696
+   },
+   "relay": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 45,
+    "ga": 416,
+    "wall": 0,
+    "killed": 704
+   },
+   "balanced": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 40,
+    "ga": 414,
+    "wall": 0,
+    "killed": 643
+   },
+   "chaos": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 38,
+    "ga": 311,
+    "wall": 0,
+    "killed": 586
+   },
+   "steady": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 24,
+    "ga": 215,
+    "wall": 0,
+    "killed": 573
+   },
+   "example": {
+    "W": 24,
+    "D": 7,
+    "L": 1,
+    "gf": 66,
+    "ga": 3,
+    "wall": 0,
+    "killed": 330
+   },
+   "example2": {
+    "W": 28,
+    "D": 4,
+    "L": 0,
+    "gf": 70,
+    "ga": 1,
+    "wall": 0,
+    "killed": 306
+   }
+  },
+  "example": {
+   "rusher": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 2,
+    "ga": 259,
+    "wall": 2251,
+    "killed": 215
+   },
+   "guardian": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 5,
+    "ga": 198,
+    "wall": 2211,
+    "killed": 180
+   },
+   "camper": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 4,
+    "ga": 309,
+    "wall": 2300,
+    "killed": 222
+   },
+   "relay": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 1,
+    "ga": 375,
+    "wall": 2196,
+    "killed": 386
+   },
+   "balanced": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 3,
+    "ga": 391,
+    "wall": 2208,
+    "killed": 277
+   },
+   "chaos": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 4,
+    "ga": 272,
+    "wall": 2223,
+    "killed": 233
+   },
+   "steady": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 0,
+    "ga": 169,
+    "wall": 2232,
+    "killed": 133
+   },
+   "baseline": {
+    "W": 1,
+    "D": 7,
+    "L": 24,
+    "gf": 3,
+    "ga": 66,
+    "wall": 2020,
+    "killed": 106
+   },
+   "example2": {
+    "W": 0,
+    "D": 32,
+    "L": 0,
+    "gf": 0,
+    "ga": 0,
+    "wall": 1761,
+    "killed": 222
+   }
+  },
+  "example2": {
+   "rusher": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 1,
+    "ga": 255,
+    "wall": 2319,
+    "killed": 194
+   },
+   "guardian": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 1,
+    "ga": 204,
+    "wall": 2188,
+    "killed": 152
+   },
+   "camper": {
+    "W": 0,
+    "D": 1,
+    "L": 31,
+    "gf": 2,
+    "ga": 303,
+    "wall": 2346,
+    "killed": 189
+   },
+   "relay": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 0,
+    "ga": 429,
+    "wall": 2328,
+    "killed": 551
+   },
+   "balanced": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 0,
+    "ga": 435,
+    "wall": 2383,
+    "killed": 292
+   },
+   "chaos": {
+    "W": 0,
+    "D": 0,
+    "L": 32,
+    "gf": 2,
+    "ga": 256,
+    "wall": 2310,
+    "killed": 236
+   },
+   "steady": {
+    "W": 0,
+    "D": 2,
+    "L": 30,
+    "gf": 5,
+    "ga": 175,
+    "wall": 2342,
+    "killed": 137
+   },
+   "baseline": {
+    "W": 0,
+    "D": 4,
+    "L": 28,
+    "gf": 1,
+    "ga": 70,
+    "wall": 2073,
+    "killed": 104
+   },
+   "example": {
+    "W": 0,
+    "D": 32,
+    "L": 0,
+    "gf": 0,
+    "ga": 0,
+    "wall": 1955,
+    "killed": 89
+   }
+  }
+ },
+ "elapsed_s": 214.8
+}

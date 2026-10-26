@@ -11,6 +11,8 @@ SCRIPTED = {
     "baseline": "teams/baseline/model.py",
     "example": "teams/example_team/model.py",
     "example2": "teams/example_team/model2.py",
+    **{name: f"opponents/{name}/model.py"
+       for name in ("rusher", "guardian", "camper", "relay", "balanced", "chaos", "steady")},
 }
 
 
