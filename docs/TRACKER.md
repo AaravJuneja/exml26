@@ -61,6 +61,13 @@ Working log. The summary is `docs/tracker.html`.
 - **Rollout optimisation:** `collect()` is 1.43× faster (median 2.09 s → 1.46 s). Changes: features 60 → 42 µs; a broad-phase cell cache in `sim`; bounding-box line-of-sight rejection; a single-draw sampler. Equivalence is pinned by hash fixtures (`ctf/tests/test_equivalence.py`); the original code was kept in `perf_orig/`. Scripted bots are now compiled once per process.
 - **Current cycle:** about 6 s with the learner update (about 5 s) as the bottleneck; about 30k ticks/s.
 
+## Strategy reset (26 Oct, surveys in docs/reviews/)
+- **Plateau confirmed by two independent reviews.**
+- **Gap is behaviour:** relay projected to our bins (sonarless) still beats us ~70%.
+- **Wall deaths:** ours 1–1.7 per player; relay's team ~0.04.
+- **Real throughput:** ~52M samples/h per job when 4 jobs ran; consolidated to 2 jobs.
+- **Ranked moves:** (1) kickstarting (k1, running); (2) plan B (heading/speed + controller, being built); (3) paired 128-game A/B methodology (`tools/ab_compare.py`); (4) a diverse league plus an exploiter; (5) a team critic.
+
 ## Experiments
 | Experiment | Result |
 |---|---|
@@ -71,7 +78,9 @@ Working log. The summary is `docs/tracker.html`.
 | v4 bundle; entropy/λ A/B (m4a: 0.003/0.95 vs m4b: 0.0005/0.99) | **m4b better**. Training at updates 161–222: baseline 100%, rusher 43%, balanced −3.6 (m4a: 83%, 24%, −4.7). Held-out: guardian/rusher/camper 33–44% (m4a 25–33%). Relay about equal. |
 | m4c: entropy 0.0001, λ 0.995 (from m4b u222) vs m4b | **m4c slightly better**: held-out guardian/rusher/camper 48–56% vs 40–52%; relay/balanced similar (6–19%) |
 | v5 features (m5a, from m4c u~205) vs m4c | About equal or slightly better (balanced −2.7 vs −3.3; camper/guardian ~0.5). Held-out relay 17–21%. **Adopted v5.** |
-| Support potential 0.15 (m5b vs m5a, from m5a u210) | running. Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |
+| Support potential 0.15 (m5b vs m5a, from m5a u210) | **Tie**: both flat at 15–20% wins vs relay/balanced. Kept (harmless). |
+| Kickstarting from relay (k1 vs m5b, from m5b u~240) | running |
+| _(old note)_ Support potential Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |
 | Release pipeline (`tools/release.py`) | Candidate m4a u70: audit/parity/latency PASS (p99 1.43 ms, max 5.6 ms; stress p99 1.2, max 10.2). Gauntlet seeds 5000–5031: 41% overall |
 
 ## Strategy review (summary)

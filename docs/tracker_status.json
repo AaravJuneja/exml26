@@ -1,5 +1,5 @@
 {
- "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. v5 memory features (m5a) tied or slightly beat v4, so m5a is now the mainline. Replay vs relay: the newest v4 snapshot <b>won 8-5</b> on the map it previously lost 2-19 and 7-14. The remaining gap is how fast we re-take the flag after it resets: a median of 195 ticks for us vs 51 for relay. <b>A/B now:</b> m5b adds a <i>support potential</i> (rewards waiting near the enemy flag while a teammate carries). <b>First real submission released: <code>teams/exml_rl/model.py</code></b> (m4c u210). Audit and deployed-file parity PASS. Latency PASS on a quiet machine: p99 0.29 ms, max 3.1 ms (with 6 CPU-burning processes: p99 1.4 ms, max 14 ms; the limit is 30 ms). Held-out: 54% wins overall vs 10 bots (table below). Up from 41% for the first candidate.",
+ "summary": "<b>Strategy reset after independent surveys.</b> Both reviewers found that plain RL has plateaued against relay and balanced: about 15-20% wins, with goal difference improving only ~0.3 per 100M samples. The gap is behaviour, not action expressivity: relay rounded to our action bins, with sonar disabled, still beats us ~70%. We hit walls 1-1.7 times per player per match; relay's whole team averages ~0.04.<br><br><b>Now running:</b><ul><li><b>k1 (kickstarting):</b> PPO plus an imitation loss toward a shadow relay teacher's actions on our own states (DAgger-style), fading over 150M samples. So far wall deaths are down to 0.83 per player; goals dipped mid-transition.</li><li><b>m5b:</b> the unchanged control.</li><li><b>Plan B in development:</b> the network picks heading and speed, and a fixed physics controller drives the sphere (the probe found cloning works much better there).</li></ul>Methodology fixes: one or two focused jobs instead of four (throughput per job back up); paired A/B tool (128 games per opponent with CIs); re-pickup delay tracked. The league's frozen opponents now play greedy, like the deployed model. <b>Repo:</b> front page <code>index.html</code> + model gallery/viewer.",
  "milestones": [
   {
    "id": "M0",
@@ -114,19 +114,19 @@
  ],
  "runs": [
   {
-   "name": "m5a",
+   "name": "k1",
    "state": "running",
-   "description": "Mainline: v5 features, 256x256, entropy 0.0001, \u03bb 0.995, defence 0.3, focused league curriculum."
+   "description": "Kickstarting from relay (shadow teacher labels, CE weight 1.0 fading over 150M samples), from m5b weights; 5 workers."
   },
   {
    "name": "m5b",
    "state": "running",
-   "description": "m5a + support potential 0.15 (pre-position at the enemy flag home while a teammate carries)."
+   "description": "Control: v5, 256x256, low entropy, \u03bb 0.995, defence + support potentials, greedy league pool; 5 workers."
   },
   {
-   "name": "m4c",
+   "name": "m5a",
    "state": "stopped",
-   "description": "v4 line; source of the teams/exml_rl release (u210)."
+   "description": "v5 mainline before consolidation; tied with m5b."
   }
  ],
  "updates": [
@@ -185,6 +185,10 @@
   {
    "time": "2026-10-26 14:10",
    "text": "v5 adopted (m5a). Replay vs relay: won 8-5 (was 2-19). Support-potential A/B (m5b) started to fix slow re-pickup (195 vs 51 ticks)."
+  },
+  {
+   "time": "2026-10-26 17:30",
+   "text": "Surveys done: plateau confirmed; both rank kickstarting from relay #1. k1 kickstarting run vs m5b control running. Repo cleaned, single main branch, front page + gallery. Plan B (heading/speed + controller) being built."
   }
  ]
 }
