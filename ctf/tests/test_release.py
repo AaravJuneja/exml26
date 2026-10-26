@@ -160,7 +160,18 @@ def test_latency_gates_release(tmp_path, policy, monkeypatch):
 
 def test_parity_catches_wrong_weights(tmp_path, policy):
     """A model.py exported from different weights fails parity, traced to a real mismatch."""
+    from ctf.features import N_THROTTLE, THROTTLE_VALUES, TURN_VALUES
+    from ctf.policy_io import read_policy
+
+    # Constant full throttle while turning: wall deaths on seed 5000 whatever the features
+    # (two random policies can both play an uneventful game with identical records).
     other = _random_policy(tmp_path / "other.npz", 8)
+    _, weights, mean, std, _ = read_policy(other)
+    w, b = weights[-1]
+    b = np.zeros_like(b)
+    b[THROTTLE_VALUES.index(1.0)] = b[N_THROTTLE + TURN_VALUES.index(0.3)] = 5.0
+    weights[-1] = (np.zeros_like(w), b)
+    save_policy(other, weights, mean, std)
     model = tmp_path / "model.py"
     model.write_text(render(other))
     assert R.first_divergence(model, other, "baseline", 5000, "red", TICKS) is None

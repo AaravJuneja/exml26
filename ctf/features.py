@@ -11,13 +11,19 @@ Frames
   direction meaningful.
 * Body frame: components along the sphere's facing (`fwd`) and to its right
   (`right`). Rotation invariant, so it is computed from world coordinates.
+
+Every column has a unique name (`FEATURE_NAMES`). Checkpoints and policy files
+store the names and the action tables, so a warm start can match inputs by
+name whatever the layout change (see ctf/feature_layouts.py).
 """
 
 import math
 
+FEATURE_VERSION = 5
 THROTTLE_VALUES = (-1.0, -0.3, -0.1, -0.05, -0.034, 0.0, 0.015, 0.025, 0.034, 0.037, 0.05,
                    0.06, 0.1, 0.3, 1.0)
 TURN_VALUES = (-1.0, -0.6, -0.3, -0.1, 0.0, 0.1, 0.3, 0.6, 1.0)
+ACTION_TABLES = {"throttle": THROTTLE_VALUES, "turn": TURN_VALUES}
 N_THROTTLE = len(THROTTLE_VALUES)
 N_TURN = len(TURN_VALUES)
 IDLE_THROTTLE = THROTTLE_VALUES.index(0.0)
@@ -41,6 +47,12 @@ RAY_RANGE = 24.0
 RAY_ANGLES = (0.0, 0.25 * math.pi, -0.25 * math.pi, 0.5 * math.pi, -0.5 * math.pi,
               0.75 * math.pi, -0.75 * math.pi, math.pi)
 UNKNOWN, FREE, BLOCKED = 0, 1, 2
+TRAIL_SHORT = 20     # decisions
+TRAIL_LONG = 60
+STUCK_THROTTLE = 0.1  # |throttle| that counts as pressing
+STUCK_TICKS = 40
+BUMP_AGE_TICKS = 600
+COLLIDE_HORIZON = 3.0  # seconds
 
 SELF_DIM = 22
 GAME_DIM = 5
@@ -50,10 +62,53 @@ BUMP_DIM = 3
 DANGER_DIM = 5
 FREE_DIM = len(RAY_ANGLES) + 3
 TEAM_DIM = 8
+MEMORY_DIM = 18
 ACTION_DIM = N_THROTTLE + N_TURN + 1
 FEATURE_DIM = (SELF_DIM + GAME_DIM + FLAG_DIM + ENEMY_SLOTS * ENEMY_DIM
                + BUMP_SLOTS * BUMP_DIM + DANGER_SLOTS * DANGER_DIM + FREE_DIM + TEAM_DIM
-               + ACTION_DIM)
+               + MEMORY_DIM + ACTION_DIM)
+
+
+def _feature_names():
+    names = ["self.x", "self.y", "self.z", "self.vfwd", "self.vright", "self.vz", "self.speed",
+             "self.lethal", "self.yaw_sin", "self.yaw_cos", "self.grounded", "self.carrying",
+             "self.edge_px", "self.edge_nx", "self.edge_py", "self.edge_ny",
+             "self.player1", "self.player2", "self.player3", "self.gap", "self.dspeed",
+             "self.side_known"]
+    names += ["game.tick", "game.lead", "game.mine", "game.theirs", "game.dead_mates"]
+    names += ["own_flag.fwd", "own_flag.right", "own_flag.dist", "own_flag.at_home",
+              "own_flag.carried", "own_flag.vfwd", "own_flag.vright"]
+    names += ["enemy_flag.seen", "enemy_flag.fwd", "enemy_flag.right", "enemy_flag.dist",
+              "enemy_flag.at_home", "enemy_flag.mine", "enemy_flag.mate"]
+    for home in ("own_home", "enemy_home"):
+        names += [home + ".known", home + ".fwd", home + ".right", home + ".dist"]
+    for k in range(ENEMY_SLOTS):
+        names += ["enemy%d.%s" % (k, f) for f in (
+            "present", "age", "fwd", "right", "dist", "rvfwd", "rvright", "speed", "speed_adv",
+            "carrying", "dz", "yaw_sin", "yaw_cos", "grounded")]
+    for k in range(BUMP_SLOTS):
+        names += ["bump%d.%s" % (k, f) for f in ("present", "fwd", "right")]
+    for k in range(DANGER_SLOTS):
+        names += ["danger%d.%s" % (k, f) for f in ("present", "fwd", "right", "age", "not_wall")]
+    names += ["ray.fwd", "ray.r45", "ray.l45", "ray.r90", "ray.l90", "ray.r135", "ray.l135",
+              "ray.back", "ray.motion", "ray.motion_blocked", "ray.known_free"]
+    names += ["team.mate_a_carrying", "team.mate_b_carrying", "team.mate_a_respawn",
+              "team.mate_b_respawn", "team.home_enemy_dist", "team.home_enemy_count",
+              "team.flag_closing", "team.enemy_flag_waited"]
+    names += ["trail20.fwd", "trail20.right", "trail60.fwd", "trail60.right", "trail60.path",
+              "trail.fill", "stuck.duration",
+              "nbump.normal_fwd", "nbump.normal_right", "nbump.age", "nbump.dist",
+              "collide.present", "collide.time", "collide.dist", "collide.speed_adv",
+              "carrier.escape_dist", "carrier.escape_speed", "carrier.home_known"]
+    names += ["prev.throttle=%r" % v for v in THROTTLE_VALUES]
+    names += ["prev.turn=%r" % v for v in TURN_VALUES]
+    names.append("prev.jump")
+    return tuple(names)
+
+
+FEATURE_NAMES = _feature_names()
+if len(FEATURE_NAMES) != FEATURE_DIM or len(set(FEATURE_NAMES)) != FEATURE_DIM:
+    raise ValueError("FEATURE_NAMES must name every feature column exactly once")
 
 
 def _clip(value, low, high):
@@ -157,7 +212,9 @@ class PlayerMemory:
         self.side_known = False
         self.cached = None
         self.flag_velocity = (0.0, 0.0)
-        self.bumps = []
+        self.bumps = []  # (x, y, tick, normal x, normal y); normal (0, 0) when unknown
+        self.trail = []  # (x, y, odometer) of the last TRAIL_LONG + 1 decisions of this life
+        self.stuck = 0
         self.grid = bytearray(GRID * GRID)
         self.homes_marked = set()
         self._homes_seen = set()
@@ -213,7 +270,8 @@ class PlayerMemory:
         return _rays(self.grid, x, y, ((dx, dy),))[0]
 
     # ----------------------------------------------------------------- updates
-    def _add_bump(self, x, y, inferred=False):
+    def _add_bump(self, x, y, inferred=False, tick=0, nx=0.0, ny=0.0):
+        """Record a contact point; (nx, ny) is the unit direction from it to the player."""
         # Obstacles are never generated within 18 units of a home; ramps can come closer.
         # Inferred stops right next to a home are almost always teammate bounces.
         if inferred:
@@ -221,10 +279,14 @@ class PlayerMemory:
                 if home is not None and (home[0] - x) ** 2 + (home[1] - y) ** 2 < HOME_CLEAR ** 2:
                     return
         self.mark_blocked(x, y)
-        for bx, by in self.bumps:
+        for i, (bx, by, btick, bnx, bny) in enumerate(self.bumps):
             if (bx - x) ** 2 + (by - y) ** 2 < 2.25:
+                # Same point again: refresh its age, and its normal when this one is known.
+                if nx or ny:
+                    bnx, bny = nx, ny
+                self.bumps[i] = (bx, by, tick if tick > btick else btick, bnx, bny)
                 return
-        self.bumps.append((x, y))
+        self.bumps.append((x, y, tick, nx, ny))
         if len(self.bumps) > BUMP_CAPACITY:
             del self.bumps[0]
 
@@ -276,7 +338,23 @@ class PlayerMemory:
                     yaw = _num(me.get("yaw"))
                     dx, dy = sign * math.sin(yaw), sign * math.cos(yaw)
                 norm = math.hypot(dx, dy) or 1.0
-                self._add_bump(x + dx / norm, y + dy / norm, inferred=True)
+                self._add_bump(x + dx / norm, y + dy / norm, inferred=True, tick=tick,
+                               nx=-dx / norm, ny=-dy / norm)
+
+        # Trail of this life (reset across a respawn or a long gap) and stuck duration.
+        trail = self.trail
+        if prev is not None and 1 <= gap <= 3 and trail:
+            tx, ty, odometer = trail[-1]
+            trail.append((x, y, odometer + math.hypot(x - tx, y - ty)))
+            if len(trail) > TRAIL_LONG + 1:
+                del trail[0]
+        else:
+            self.trail = [(x, y, 0.0)]
+        if (gap == 1 and speed < 1.0
+                and abs(THROTTLE_VALUES[self.prev_throttle]) >= STUCK_THROTTLE):
+            self.stuck += 1
+        else:
+            self.stuck = 0
 
         carrier = own_flag.get("carried_by", -1)
         fx, fy = _num(own_flag.get("x")), _num(own_flag.get("y"))
@@ -311,19 +389,26 @@ class PlayerMemory:
                 continue
             dx, dy = _num(message.get("x")), _num(message.get("y"))
             wall = message.get("reason") == "wall"
-            self.deaths[key] = (dx, dy, int(_num(message.get("tick"))), wall)
+            dtick = int(_num(message.get("tick")))
+            self.deaths[key] = (dx, dy, dtick, wall)
             if wall:
-                self._add_bump(dx, dy)
+                self._add_bump(dx, dy, tick=dtick)
         if len(self.deaths) > 64:
             for key in sorted(self.deaths, key=lambda k: self.deaths[k][2])[:-64]:
                 del self.deaths[key]
 
+        enemies = self.enemies
         for enemy in observation.get("visible_enemies") or ():
-            self.enemies[enemy.get("id")] = (
+            eid = enemy.get("id")
+            espeed = _num(enemy.get("speed"))
+            old = enemies.get(eid)
+            # Speed change per tick, when the same enemy was also seen on the previous tick.
+            accel = espeed - old[6] if old is not None and old[0] == tick - 1 else 0.0
+            enemies[eid] = (
                 tick, _num(enemy.get("x")), _num(enemy.get("y")), _num(enemy.get("z")),
-                _num(enemy.get("vx")), _num(enemy.get("vy")), _num(enemy.get("speed")),
+                _num(enemy.get("vx")), _num(enemy.get("vy")), espeed,
                 1.0 if enemy.get("carrying") else 0.0, _num(enemy.get("yaw")),
-                1.0 if enemy.get("grounded") else 0.0,
+                1.0 if enemy.get("grounded") else 0.0, accel,
             )
         for key in [k for k, v in self.enemies.items() if tick - v[0] > ENEMY_MEMORY_TICKS]:
             del self.enemies[key]
@@ -428,13 +513,13 @@ def encode(observation, memory):
 
     enemies = []
     for record in memory.enemies.values():
-        etick, ex, ey, ez, evx, evy, espeed, ecarry, eyaw, egrounded = record
+        etick, ex, ey, ez, evx, evy, espeed, ecarry, eyaw, egrounded, eaccel = record
         dx, dy = ex - x, ey - y
         enemies.append((tick - etick, dx * dx + dy * dy, dx, dy, ez, evx, evy, espeed, ecarry,
-                        eyaw, egrounded))
+                        eyaw, egrounded, eaccel))
     if len(enemies) > 1:
         enemies.sort(key=_enemy_order)
-    for age, dist2, dx, dy, ez, evx, evy, espeed, ecarry, eyaw, egrounded in enemies[:ENEMY_SLOTS]:
+    for age, dist2, dx, dy, ez, evx, evy, espeed, ecarry, eyaw, egrounded, _ in enemies[:ENEMY_SLOTS]:
         rx, ry = evx - vx, evy - vy
         dist = math.sqrt(dist2) / 40.0
         dz = ez - z
@@ -449,14 +534,14 @@ def encode(observation, memory):
 
     near = []
     limit2 = BUMP_RANGE * BUMP_RANGE
-    for bx, by in memory.bumps:
+    for bx, by, btick, bnx, bny in memory.bumps:
         dx, dy = bx - x, by - y
         d2 = dx * dx + dy * dy
         if d2 <= limit2:
-            near.append((d2, dx, dy))
+            near.append((d2, dx, dy, btick, bnx, bny))
     if near:
         near.sort()
-        for _, dx, dy in near[:BUMP_SLOTS]:
+        for _, dx, dy, _, _, _ in near[:BUMP_SLOTS]:
             out += (1.0, (dx * s + dy * c) / BUMP_RANGE, (dx * c - dy * s) / BUMP_RANGE)
     if len(near) < BUMP_SLOTS:
         out += _ZEROS[:BUMP_DIM * (BUMP_SLOTS - len(near))]
@@ -545,6 +630,61 @@ def encode(observation, memory):
         waited = 2.0 if waited > 2.0 else waited
     team += (closing, waited)
     out += team
+
+    # Memory block. Trail of this life: displacement over the last TRAIL_SHORT and
+    # TRAIL_LONG decisions (body frame) and path length, so progress, orbiting and being
+    # stuck look different; then how long throttle has been pressed without moving.
+    trail = memory.trail
+    n = len(trail)
+    tx, ty, _ = trail[n - 1 - TRAIL_SHORT] if n > TRAIL_SHORT else trail[0]
+    lx, ly, odometer = trail[n - 1 - TRAIL_LONG] if n > TRAIL_LONG else trail[0]
+    dx, dy, ex, ey = x - tx, y - ty, x - lx, y - ly
+    path = (trail[-1][2] - odometer) / (0.9 * TRAIL_LONG)
+    stuck = memory.stuck / STUCK_TICKS
+    out += ((dx * s + dy * c) / (0.9 * TRAIL_SHORT), (dx * c - dy * s) / (0.9 * TRAIL_SHORT),
+            (ex * s + ey * c) / (0.9 * TRAIL_LONG), (ex * c - ey * s) / (0.9 * TRAIL_LONG),
+            2.0 if path > 2.0 else path, (n - 1) / TRAIL_LONG, 1.0 if stuck > 1.0 else stuck)
+    # Nearest remembered contact: surface normal (towards where we stood), age, distance.
+    if near:
+        d2, _, _, btick, bnx, bny = near[0]
+        age = (tick - btick) / BUMP_AGE_TICKS
+        out += (bnx * s + bny * c, bnx * c - bny * s,
+                0.0 if age < 0.0 else 1.0 if age > 1.0 else age, math.sqrt(d2) / BUMP_RANGE)
+    else:
+        out += (0.0, 0.0, 1.0, 1.0)
+    # Closest approach to the nearest visible enemy at constant velocities, and the speed
+    # advantage there (speeds extrapolated with their last per-tick change): the faster
+    # sphere wins a collision.
+    if enemies and enemies[0][0] == 0:
+        _, _, dx, dy, _, evx, evy, espeed, _, _, _, eaccel = enemies[0]
+        rx, ry = evx - vx, evy - vy
+        rv2 = rx * rx + ry * ry
+        t = -(dx * rx + dy * ry) / rv2 if rv2 > 1e-9 else 0.0
+        t = 0.0 if t < 0.0 else COLLIDE_HORIZON if t > COLLIDE_HORIZON else t
+        dx, dy = dx + rx * t, dy + ry * t
+        dist = math.sqrt(dx * dx + dy * dy) / 20.0
+        mine = speed + (speed - prev_speed) * 20.0 * t
+        theirs = espeed + eaccel * 20.0 * t
+        mine = 0.0 if mine < 0.0 else 18.0 if mine > 18.0 else mine
+        theirs = 0.0 if theirs < 0.0 else 18.0 if theirs > 18.0 else theirs
+        out += (1.0, t / COLLIDE_HORIZON, 2.0 if dist > 2.0 else dist, (mine - theirs) / 18.0)
+    else:
+        out += (0.0, 1.0, 2.0, 0.0)
+    # Our flag's carrier: distance to its own home (the observed enemy home, else our home
+    # rotated by 180 degrees) and its speed towards it.
+    home = None
+    if own_flag.get("carried_by", -1) != -1:
+        home, known = memory.enemy_home, 1.0
+        if home is None and memory.own_home is not None:
+            home, known = (-memory.own_home[0], -memory.own_home[1]), 0.5
+    if home is not None:
+        hx, hy = home[0] - _num(own_flag.get("x")), home[1] - _num(own_flag.get("y"))
+        norm = math.hypot(hx, hy)
+        escape = (fvx * hx + fvy * hy) / norm / 18.0 if norm > 1e-6 else 0.0
+        out += (2.0 if norm > 200.0 else norm / 100.0,
+                -2.0 if escape < -2.0 else 2.0 if escape > 2.0 else escape, known)
+    else:
+        out += (0.0, 0.0, 0.0)
 
     action = [0.0] * ACTION_DIM
     action[memory.prev_throttle] = 1.0

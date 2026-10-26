@@ -83,35 +83,6 @@ def test_training_smoke_gru(tmp_path):
         raise AssertionError("loading a gru checkpoint into an mlp actor must fail")
 
 
-def test_feature_surgery_preserves_old_policy(tmp_path):
-    """A checkpoint built for fewer features plays identically after expansion (new inputs zeroed)."""
-    import torch
-
-    from ctf import features as F
-    from ctf.nets import Actor
-    from ctf.train import expand_features, feature_index_map
-
-    old_dim = F.FEATURE_DIM - 11
-    torch.manual_seed(0)
-    old = Actor((32, 32)) if not hasattr(Actor, "__wrapped__") else None
-    # build an old-width actor by hand
-    old_net = torch.nn.Sequential(torch.nn.Linear(old_dim, 32), torch.nn.Tanh(),
-                                  torch.nn.Linear(32, 23))
-    state = {"actor": {"net.0.weight": old_net[0].weight.detach().clone(),
-                       "net.0.bias": old_net[0].bias.detach().clone(),
-                       "net.2.weight": old_net[2].weight.detach().clone(),
-                       "net.2.bias": old_net[2].bias.detach().clone()},
-             "critic": {}, "norm": {"mean": np.zeros(old_dim), "var": np.ones(old_dim), "count": 5.0}}
-    new = expand_features(state, old_dim)
-    x_old = torch.randn(7, old_dim)
-    x_new = torch.randn(7, F.FEATURE_DIM)  # random values in the new feature slots
-    x_new[:, feature_index_map(old_dim)] = x_old
-    w, b = new["actor"]["net.0.weight"], new["actor"]["net.0.bias"]
-    assert torch.allclose(x_old @ old_net[0].weight.T + old_net[0].bias, x_new @ w.T + b, atol=1e-5)
-    assert new["norm"]["mean"].shape == (F.FEATURE_DIM,)
-    del old
-
-
 def test_pipelined_training_smoke(tmp_path):
     main(["--name", "pipe", "--runs", str(tmp_path), "--workers", "2", "--envs", "1",
           "--max-ticks", "150", "--updates", "4", "--minibatch", "256", "--norm-updates", "1",
@@ -169,9 +140,11 @@ def test_v3_to_v4_migration_preserves_action_distribution():
     """Probabilities of the original throttle values are preserved when duplicates are merged."""
     import torch
 
-    from ctf import features as F
+    from ctf import feature_layouts as L
     from ctf.train import V3_DIM, V3_BASE, V3_THROTTLE, migrate_v3_to_v4
 
+    v4_throttle = L.V4_ACTION_TABLES["throttle"]
+    v4_dim, team_dim, n_throttle = len(L.V4_FEATURE_NAMES), 8, len(v4_throttle)
     torch.manual_seed(0)
     old = torch.nn.Sequential(torch.nn.Linear(V3_DIM, 16), torch.nn.Tanh(), torch.nn.Linear(16, 23))
     state = {"actor": {f"net.{k}": v.detach().clone() for k, v in
@@ -179,22 +152,23 @@ def test_v3_to_v4_migration_preserves_action_distribution():
                         "2.weight": old[2].weight, "2.bias": old[2].bias}.items()},
              "critic": {}, "norm": {"mean": np.zeros(V3_DIM), "var": np.ones(V3_DIM), "count": 1.0}}
     new = migrate_v3_to_v4(state)
+    assert new["feature_names"] == list(L.V4_FEATURE_NAMES)
     x_old = torch.randn(5, V3_DIM)
     x_old[:, V3_BASE:] = 0
     x_old[:, V3_BASE + 3] = 1.0          # previous throttle -0.03 (v3)
-    x_new = torch.zeros(5, F.FEATURE_DIM)
+    x_new = torch.zeros(5, v4_dim)
     x_new[:, :V3_BASE] = x_old[:, :V3_BASE]
-    x_new[:, V3_BASE + F.TEAM_DIM + F.THROTTLE_VALUES.index(-0.034)] = 1.0
+    x_new[:, V3_BASE + team_dim + v4_throttle.index(-0.034)] = 1.0
     h_old = torch.tanh(x_old @ old[0].weight.T + old[0].bias)
     h_new = torch.tanh(x_new @ new["actor"]["net.0.weight"].T + new["actor"]["net.0.bias"])
     assert torch.allclose(h_old, h_new, atol=1e-5)
     logits_old = h_old @ old[2].weight.T + old[2].bias
     logits_new = h_new @ new["actor"]["net.2.weight"].T + new["actor"]["net.2.bias"]
     p_old = torch.softmax(logits_old[:, :12], -1)
-    p_new = torch.softmax(logits_new[:, :F.N_THROTTLE], -1)
-    nearest = [min(range(12), key=lambda i: abs(V3_THROTTLE[i] - v)) for v in F.THROTTLE_VALUES]
+    p_new = torch.softmax(logits_new[:, :n_throttle], -1)
+    nearest = [min(range(12), key=lambda i: abs(V3_THROTTLE[i] - v)) for v in v4_throttle]
     merged = torch.zeros_like(p_old)
     for j, i in enumerate(nearest):
         merged[:, i] += p_new[:, j]
     assert torch.allclose(merged, p_old, atol=1e-5)
-    assert torch.allclose(logits_old[:, 12:], logits_new[:, F.N_THROTTLE:], atol=1e-5)
+    assert torch.allclose(logits_old[:, 12:], logits_new[:, n_throttle:], atol=1e-5)

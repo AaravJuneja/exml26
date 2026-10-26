@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from ctf import feature_layouts as L
 from ctf import features as F
 from ctf.nets import Critic, RunningNorm, actor_to_numpy, build_actor, log_prob_entropy
 from ctf.policy_io import save_policy
@@ -144,49 +145,6 @@ def merge_results(results, recurrent):
     return batch
 
 
-def feature_index_map(old_dim, new_dim=None):
-    """Positions of old features in the new layout.
-
-    New features are always inserted immediately before the previous-action block
-    (the last ACTION_DIM features), so everything else keeps its offset.
-    """
-    new_dim = F.FEATURE_DIM if new_dim is None else new_dim
-    inserted = new_dim - old_dim
-    split = old_dim - F.ACTION_DIM
-    return [i if i < split else i + inserted for i in range(old_dim)]
-
-
-def expand_features(state, old_dim):
-    """Warm-start surgery: zero input weights and identity normalization for new features."""
-    index = torch.as_tensor(feature_index_map(old_dim))
-    new_dim = F.FEATURE_DIM
-
-    def widen_input_layer(weights):
-        """Widen only the first matrix that reads the features (the input layer)."""
-        out, done = {}, False
-        for name, tensor in weights.items():
-            if not done and tensor.dim() == 2 and tensor.shape[1] == old_dim:
-                wide = tensor.new_zeros(tensor.shape[0], new_dim)
-                wide[:, index] = tensor
-                out[name], done = wide, True
-            else:
-                out[name] = tensor
-        if weights and not done:
-            raise ValueError("no input layer with the old feature width found")
-        return out
-
-    state = dict(state)
-    for key in ("actor", "critic"):
-        state[key] = widen_input_layer(state[key])
-    norm = dict(state["norm"])
-    mean, var = np.zeros(new_dim), np.ones(new_dim)
-    mean[index.numpy()] = norm["mean"]
-    var[index.numpy()] = norm["var"]
-    norm.update(mean=mean, var=var)
-    state["norm"] = norm
-    return state
-
-
 def widen_mlp(weights, new_hidden, rng, noise=1e-4):
     """Net2WiderNet for a Sequential of Linear/Tanh layers stored as net.{i}.weight/bias.
 
@@ -216,56 +174,83 @@ def widen_mlp(weights, new_hidden, rng, noise=1e-4):
     return out
 
 
-V3_THROTTLE = (-1.0, -0.3, -0.1, -0.03, 0.0, 0.015, 0.025, 0.034, 0.05, 0.1, 0.3, 1.0)
+V3_THROTTLE = L.V3_ACTION_TABLES["throttle"]
 V3_DIM, V3_BASE = 180, 158  # v3: 158 base features (incl. rays) then 22 previous-action
+NORM_CLIP_STD = RunningNorm(1).clip_std
+
+
+def state_layout(state):
+    """(feature names, action tables) of a checkpoint; unnamed ones (v3, v4) by width."""
+    return L.resolve_layout(state.get("feature_names"), state.get("action_tables"),
+                            dim=len(state["norm"]["mean"]))
+
+
+def _input_layer(weights, width):
+    """Key of the first matrix that reads `width` features (the input layer), or None."""
+    for name, tensor in weights.items():
+        if name.endswith(".weight") and tensor.dim() == 2 and tensor.shape[1] == width:
+            return name
+    return None
+
+
+def migrate_state(state, old_names, old_tables, new_names=None, new_tables=None):
+    """Warm-start an MLP checkpoint state built for another feature layout / action tables.
+
+    Input columns are matched by name (new columns: zero weights, identity
+    normalization; new previous-action values inherit the nearest old value of their
+    head) in the actor's and the critic's input layers; the actor's output rows map to
+    the nearest old action value per head with -log(copies) on duplicated rows. See
+    ctf/feature_layouts.py. Returns a new state labelled with the new layout.
+    """
+    new_names = F.FEATURE_NAMES if new_names is None else tuple(new_names)
+    new_tables = L.normalize_tables(F.ACTION_TABLES if new_tables is None else new_tables)
+    old_names, old_tables = tuple(old_names), L.normalize_tables(old_tables)
+    sources = L.column_sources(old_names, old_tables, new_names, new_tables)
+    norm = dict(state["norm"])
+    mean, var = np.asarray(norm["mean"], np.float64), np.asarray(norm["var"], np.float64)
+    if len(mean) != len(old_names):
+        raise ValueError(f"checkpoint has {len(mean)} features, layout has {len(old_names)}")
+    std = np.maximum(np.sqrt(var), NORM_CLIP_STD)
+
+    def migrate_input(weights):
+        weights = dict(weights)
+        key = _input_layer(weights, len(old_names))
+        if key is None:
+            if weights:
+                raise ValueError("no input layer with the old feature width found")
+            return weights
+        bias_key = key[:-len("weight")] + "bias"
+        w, b = weights[key], weights[bias_key]
+        new_w, new_b = L.migrate_input(w.detach().cpu().numpy(), b.detach().cpu().numpy(),
+                                       mean, std, sources, old_names, old_tables)
+        weights[key] = torch.as_tensor(new_w, dtype=w.dtype, device=w.device)
+        weights[bias_key] = torch.as_tensor(new_b, dtype=b.dtype, device=b.device)
+        return weights
+
+    actor = state["actor"]
+    if any(not k.startswith("net.") for k in actor):
+        raise ValueError("feature-layout migration supports MLP actors only")
+    actor = migrate_input(actor)
+    last = max(int(k.split(".")[1]) for k in actor if k.startswith("net."))
+    w, b = actor[f"net.{last}.weight"], actor[f"net.{last}.bias"]
+    new_w, new_b = L.migrate_output(w.detach().cpu().numpy(), b.detach().cpu().numpy(),
+                                    old_tables, new_tables)
+    actor[f"net.{last}.weight"] = torch.as_tensor(new_w, dtype=w.dtype, device=w.device)
+    actor[f"net.{last}.bias"] = torch.as_tensor(new_b, dtype=b.dtype, device=b.device)
+    norm["mean"], norm["var"] = L.migrate_norm(mean, var, sources)
+    return dict(state, actor=actor, critic=migrate_input(state["critic"]), norm=norm,
+                feature_names=list(new_names),
+                action_tables={head: list(v) for head, v in new_tables.items()})
 
 
 def migrate_v3_to_v4(state):
-    """Warm-start a v3 checkpoint (180 features, 12 throttle bins) in the v4 layout.
+    """Warm-start a v3 checkpoint (180 features, 12 throttle bins) in the frozen v4 layout.
 
-    v4 inserts the team block after the rays and refines the throttle bins. Each new
-    throttle bin inherits the input column and output row of the nearest v3 bin; output
-    rows that are duplicated get -log(copies) on their bias, so the action distribution
-    over the original values is preserved.
+    v4 inserted the team block after the rays and refined the throttle bins; this is
+    `migrate_state` between the two frozen layouts.
     """
-    nearest = [min(range(len(V3_THROTTLE)), key=lambda i: abs(V3_THROTTLE[i] - v))
-               for v in F.THROTTLE_VALUES]
-    copies = np.bincount(nearest, minlength=len(V3_THROTTLE))
-    column = list(range(V3_BASE)) + [None] * F.TEAM_DIM
-    column += [V3_BASE + i for i in nearest]
-    column += [V3_BASE + len(V3_THROTTLE) + t for t in range(F.N_TURN)]
-    column += [V3_DIM - 1]
-    assert len(column) == F.FEATURE_DIM
-    rows = nearest + [len(V3_THROTTLE) + t for t in range(F.N_TURN + 2)]
-
-    def widen_input(weights):
-        out, done = {}, False
-        for name, tensor in weights.items():
-            if not done and tensor.dim() == 2 and tensor.shape[1] == V3_DIM:
-                wide = tensor.new_zeros(tensor.shape[0], F.FEATURE_DIM)
-                for j, i in enumerate(column):
-                    if i is not None:
-                        wide[:, j] = tensor[:, i]
-                out[name], done = wide, True
-            else:
-                out[name] = tensor
-        return out
-
-    actor = widen_input(state["actor"])
-    last = max(int(k.split(".")[1]) for k in actor if k.startswith("net."))
-    w, b = actor[f"net.{last}.weight"], actor[f"net.{last}.bias"]
-    index = torch.as_tensor(rows, device=w.device)
-    correction = torch.as_tensor([np.log(copies[i]) for i in nearest] + [0.0] * (F.N_TURN + 2),
-                                 dtype=b.dtype, device=b.device)
-    actor[f"net.{last}.weight"] = w[index].clone()
-    actor[f"net.{last}.bias"] = b[index].clone() - correction
-    norm = dict(state["norm"])
-    mean, var = np.zeros(F.FEATURE_DIM), np.ones(F.FEATURE_DIM)
-    for j, i in enumerate(column):
-        if i is not None:
-            mean[j], var[j] = norm["mean"][i], norm["var"][i]
-    norm.update(mean=mean, var=var)
-    return dict(state, actor=actor, critic=widen_input(state["critic"]), norm=norm)
+    return migrate_state(state, L.V3_FEATURE_NAMES, L.V3_ACTION_TABLES,
+                         L.V4_FEATURE_NAMES, L.V4_ACTION_TABLES)
 
 
 def parse_mix(text):
@@ -323,6 +308,8 @@ class Trainer:
             "opp_winrate": self.opp_winrate, "norm_frozen": self.norm_frozen,
             "np_rng": self.rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
             "args": vars(self.args),
+            "feature_names": list(F.FEATURE_NAMES),
+            "action_tables": {head: list(v) for head, v in F.ACTION_TABLES.items()},
         }
 
     def save(self):
@@ -335,15 +322,18 @@ class Trainer:
         arch = state.get("args", {}).get("arch", "mlp")
         if arch != self.args.arch:
             raise ValueError(f"{path} holds a {arch!r} actor but --arch is {self.args.arch!r}")
-        old_dim = len(state["norm"]["mean"])
-        if old_dim != F.FEATURE_DIM:
+        names, tables = state_layout(state)
+        if not L.same_layout(names, tables, F.FEATURE_NAMES, F.ACTION_TABLES):
             if not weights_only:
-                raise ValueError(f"{path} uses {old_dim} features; resume needs {F.FEATURE_DIM}"
-                                 " (use --init to warm-start with feature surgery)")
-            if old_dim == V3_DIM:
+                raise ValueError(f"{path} uses another feature layout ({len(names)} features); "
+                                 "resume needs the current one (use --init to warm-start "
+                                 "with feature migration)")
+            if self.args.arch != "mlp":
+                raise ValueError("feature-layout migration supports --arch mlp only")
+            if "feature_names" not in state and len(names) == V3_DIM:
                 state = migrate_v3_to_v4(state)
-            else:
-                state = expand_features(state, old_dim)
+                names, tables = L.V4_FEATURE_NAMES, L.V4_ACTION_TABLES
+            state = migrate_state(state, names, tables)
         if weights_only and self.args.arch == "mlp":
             # Net2WiderNet when the requested network is wider than the checkpoint.
             actor_hidden = [t.shape[0] for k, t in sorted(state["actor"].items())

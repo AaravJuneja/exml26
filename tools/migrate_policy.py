@@ -1,44 +1,30 @@
-"""Migrate a v3 MLP policy file (.npz) to the current v4 feature/action layout.
+"""Migrate an MLP policy file (.npz) to the current feature/action layout.
 
     python tools/migrate_policy.py OLD.npz NEW.npz
+
+Works from any layout: files with stored feature names (version 5+) and the
+frozen v3/v4 layouts of unnamed files (see ctf/feature_layouts.py).
 """
 
-import json
 import sys
 from pathlib import Path
 
-import numpy as np
-import torch
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ctf.policy_io import save_policy  # noqa: E402
-from ctf.train import migrate_v3_to_v4  # noqa: E402
+from ctf.policy_io import migrate_policy_arrays, read_policy, save_policy  # noqa: E402
+
+KEEP = ("run", "update", "samples", "notes")
 
 
 def main(src, dst):
-    with np.load(src, allow_pickle=False) as data:
-        meta = json.loads(str(data["meta"]))
-        layers, i = [], 0
-        while f"W{i}" in data:
-            layers.append((data[f"W{i}"], data[f"b{i}"]))
-            i += 1
-        mean, std = data["obs_mean"], data["obs_std"]
-    actor = {}
-    for k, (w, b) in enumerate(layers):
-        actor[f"net.{2 * k}.weight"] = torch.as_tensor(w.T.copy())
-        actor[f"net.{2 * k}.bias"] = torch.as_tensor(b.copy())
-    state = {"actor": actor, "critic": {},
-             "norm": {"mean": mean.astype(np.float64), "var": std.astype(np.float64) ** 2,
-                      "count": 1.0}}
-    new = migrate_v3_to_v4(state)
-    weights = []
-    for k in range(len(layers)):
-        weights.append((new["actor"][f"net.{2 * k}.weight"].numpy().T.copy(),
-                        new["actor"][f"net.{2 * k}.bias"].numpy().copy()))
-    save_policy(dst, weights, new["norm"]["mean"], np.sqrt(new["norm"]["var"]),
-                migrated_from=str(src), **{k: v for k, v in meta.items()
-                                           if k in ("run", "update", "samples")})
+    arch, weights, mean, std, meta = read_policy(src)
+    if arch != "mlp":
+        raise SystemExit(f"{src}: only MLP policies can be migrated (arch {arch!r})")
+    weights, mean, std, new_meta = migrate_policy_arrays(weights, mean, std, meta)
+    origin = new_meta.get("migrated_from", {"feature_version": meta.get("feature_version"),
+                                            "feature_dim": len(mean)})
+    save_policy(dst, weights, mean, std, migrated_from=dict(origin, path=str(src)),
+                **{k: v for k, v in meta.items() if k in KEEP})
     print("wrote", dst)
 
 
