@@ -1,0 +1,94 @@
+{
+ "summary": "<b>The policy is learning to score.</b> Run <b>m2e</b> reached 3.2 goals per match against idle opponents after 38M samples (about 10 minutes of training), with ~0.6 wall deaths per player. On held-out maps it beats idle 71% of the time; baseline is 0% so far, since it hasn't trained against real opponents yet (that's M3).<br><br>Since the last update:<ul><li>Review round 2 found and we fixed: a reward leak of the teammate carrier's position, critic drift (fixed with PopArt), and normalisation drift.</li><li>Your ramp fix is applied, and the engine is byte-identical to game-env.</li><li>A discounting side effect in the shaping (a per-tick bonus for idling far from the flag) was diagnosed and fixed; it had stalled two runs.</li><li>Added: a long-horizon win-objective option, a replay viewer (docs/viewer.html), and an exporter latency verdict.</li></ul>",
+ "milestones": [
+  {
+   "id": "M0",
+   "title": "Fast exact simulator, training harness, throughput",
+   "state": "done",
+   "note": "Exact engine replica; ~240M samples/h on the training machine"
+  },
+  {
+   "id": "M1",
+   "title": "Single-file model.py export + latency proof",
+   "state": "done",
+   "note": "model.py export bit-exact; callback p99 ~1 ms under load (30 ms limit)"
+  },
+  {
+   "id": "M2",
+   "title": "Learn to score vs idle (\u22658 captures/match, \u22642 wall deaths/player)",
+   "state": "active",
+   "note": "m2e: 3.2 goals/match vs idle at 38M samples and climbing (gate: \u22658)"
+  },
+  {
+   "id": "M3",
+   "title": "Beat scripted pool (\u226590% wins vs provided bots)",
+   "state": "todo",
+   "note": "5 new training opponents in progress"
+  },
+  {
+   "id": "M4",
+   "title": "Self-play league",
+   "state": "active",
+   "note": "League infrastructure (PFSP pool, mirror self-play) built"
+  },
+  {
+   "id": "M5",
+   "title": "Improvements: GRU, sonar, bigger nets, PBT",
+   "state": "todo",
+   "note": ""
+  },
+  {
+   "id": "M6",
+   "title": "Freeze, export, final 64-seed test, latency audit",
+   "state": "todo",
+   "note": ""
+  }
+ ],
+ "eval_header": [
+  "Bot",
+  "vs baseline W-D-L",
+  "GD",
+  "Wall deaths / player"
+ ],
+ "eval_rows": [
+  [
+   "baseline (reference)",
+   "\u2014",
+   "\u2014",
+   "0.0"
+  ],
+  [
+   "example",
+   "4-10-50",
+   "-1.55",
+   "21.6"
+  ],
+  [
+   "example2",
+   "0-11-53",
+   "-2.14",
+   "22.1"
+  ]
+ ],
+ "runs": [
+  {
+   "name": "m2e",
+   "state": "running",
+   "description": "PPO from scratch vs idle opponents; MLP 128x128; exact potential route shaping (undiscounted differences), 0.5 annealing to 0.1; win bonus 1.0."
+  }
+ ],
+ "updates": [
+  {
+   "time": "2026-10-25 23:10",
+   "text": "Exact simulator (bit-identical to engine), feature encoder, PPO trainer done; M2 training started on the training machine."
+  },
+  {
+   "time": "2026-10-25 23:45",
+   "text": "Phase 1 reviewed (2 critical reward bugs fixed). Exporter (M1) done: bit-exact, ~1 ms callbacks. Evaluation harness done. League + mirror self-play added. m2b training."
+  },
+  {
+   "time": "2026-10-26 00:35",
+   "text": "M2 learning: 3.2 goals/match vs idle at 38M samples. Review round 2 fixes in. Replay viewer added. Idle-bonus shaping artifact found and fixed."
+  }
+ ]
+}

@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CTF replay viewer</title>
+<style>
+  :root {
+    --bg: #0d1016; --panel: #151a23; --panel2: #1b2130; --line: #262e3f;
+    --text: #d7dce6; --dim: #8a93a6; --faint: #5a6378; --accent: #e5b454;
+    --red: #ff5f5f; --blue: #4fa3ff; --wall: #ff9a3c; --kill: #d46bff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr auto; overflow: hidden; }
+  button, select, input { font: inherit; color: var(--text); }
+  button, select { background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; }
+  button:hover, select:hover { border-color: #3a4560; }
+  button:disabled { opacity: .4; cursor: default; }
+  header { display: flex; align-items: center; gap: 16px; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .3px; }
+  header .meta { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .spacer { flex: 1; }
+  #score { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px;
+    font-variant-numeric: tabular-nums; }
+  #score .team { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  #score .team small { font-size: 11px; font-weight: 500; color: var(--dim); }
+  #score .sep { color: var(--faint); }
+  main { display: grid; grid-template-columns: 1fr 360px; min-height: 0; }
+  #stage { position: relative; min-width: 0; min-height: 0; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #tooltip { position: absolute; pointer-events: none; display: none; background: rgba(16,20,28,.95);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; font-size: 12px;
+    font-variant-numeric: tabular-nums; white-space: pre; z-index: 5; box-shadow: 0 4px 14px #0008; }
+  #drop { position: absolute; inset: 24px; border: 2px dashed #34405a; border-radius: 14px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    color: var(--dim); text-align: center; z-index: 4; background: rgba(13,16,22,.85); }
+  #drop.hidden { display: none; }
+  #drop.over, body.dragging #drop { display: flex; border-color: var(--accent); color: var(--text); }
+  #drop b { color: var(--text); font-size: 16px; }
+  #error { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 6; display: none;
+    background: #3a1418; border: 1px solid #7a2a33; color: #ffd0d4; padding: 8px 12px;
+    border-radius: 8px; white-space: pre-wrap; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); display: flex;
+    flex-direction: column; min-height: 0; }
+  aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim);
+    margin: 0; padding: 10px 12px 6px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  aside h2 .grow { flex: 1; }
+  aside h2 label { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; }
+  #players { padding: 0 8px 6px; }
+  .prow { display: grid; grid-template-columns: 28px 1fr auto; gap: 2px 8px; align-items: center;
+    padding: 5px 6px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .prow:hover { background: var(--panel2); }
+  .prow.sel { border-color: var(--accent); background: var(--panel2); }
+  .prow.dead { opacity: .5; }
+  .badge { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-weight: 700; font-size: 12px; color: #0d1016; grid-row: span 2; }
+  .pname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pstat { color: var(--dim); font-size: 11.5px; font-variant-numeric: tabular-nums; grid-column: 2 / 4; }
+  .pflag { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; color: #0d1016; }
+  .act { display: flex; gap: 6px; align-items: center; grid-column: 2 / 4; font-size: 11px; color: var(--dim); }
+  .bar { position: relative; width: 70px; height: 7px; background: #0e121a; border-radius: 4px; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); }
+  .bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #444f66; }
+  .jump { padding: 0 4px; border-radius: 3px; border: 1px solid var(--line); color: var(--faint); }
+  .jump.on { color: #0d1016; background: var(--accent); border-color: var(--accent); }
+  #evfilters { display: flex; gap: 10px; padding: 0 12px 6px; color: var(--dim); font-size: 12px; flex-wrap: wrap; }
+  #events { flex: 1; overflow-y: auto; border-top: 1px solid var(--line); min-height: 0; }
+  .ev { display: grid; grid-template-columns: 52px 14px 1fr; gap: 6px; padding: 3px 12px; cursor: pointer;
+    font-size: 12px; align-items: center; border-left: 3px solid transparent; }
+  .ev:hover { background: var(--panel2); }
+  .ev.future { opacity: .45; }
+  .ev.current { background: #222a3a; border-left-color: var(--accent); }
+  .ev time { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .ev .ico { text-align: center; font-weight: 700; }
+  footer { background: var(--panel); border-top: 1px solid var(--line); padding: 8px 14px 10px;
+    display: grid; gap: 6px; }
+  .ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ctrl .time { font-variant-numeric: tabular-nums; color: var(--dim); min-width: 170px; }
+  .ctrl label { color: var(--dim); display: flex; align-items: center; gap: 4px; }
+  #play { min-width: 74px; font-weight: 600; }
+  #scrub { flex: 1; min-width: 200px; accent-color: var(--accent); }
+  #timeline { width: 100%; height: 26px; display: block; cursor: pointer; border-radius: 4px; }
+  .kbd { color: var(--faint); font-size: 11px; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CTF replay</h1>
+  <button id="open" title="Open replay JSON (or drag &amp; drop)">Open…</button>
+  <input id="file" type="file" accept=".json,application/json">
+  <span class="meta" id="meta">no replay loaded</span>
+  <span class="spacer"></span>
+  <div id="score"></div>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <div id="tooltip"></div>
+    <div id="error"></div>
+    <div id="drop">
+      <b>Drop a replay JSON here</b>
+      <span>or use <u>Open…</u> — produced by <code>python tools/replay.py A B --out replay.json</code></span>
+    </div>
+  </div>
+  <aside>
+    <h2><span class="grow">Players</span></h2>
+    <div id="players"></div>
+    <h2><span class="grow">Events</span><label><input type="checkbox" id="autoscroll" checked> follow</label></h2>
+    <div id="evfilters">
+      <label><input type="checkbox" data-f="capture" checked> captures</label>
+      <label><input type="checkbox" data-f="pickup" checked> pickups</label>
+      <label><input type="checkbox" data-f="wall" checked> wall deaths</label>
+      <label><input type="checkbox" data-f="player" checked> player deaths</label>
+    </div>
+    <div id="events"></div>
+  </aside>
+</main>
+<footer>
+  <canvas id="timeline" title="Click or drag to seek. Tall: captures, mid: pickups, short: deaths"></canvas>
+  <div class="ctrl">
+    <button id="back" title="Step back (←, Shift: 1 s)">◀︎◀︎</button>
+    <button id="play" title="Play / pause (space)">▶ Play</button>
+    <button id="fwd" title="Step forward (→, Shift: 1 s)">▶︎▶︎</button>
+    <select id="speed" title="Playback speed ([ / ])">
+      <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option>
+      <option value="8">8×</option><option value="16">16×</option><option value="32">32×</option>
+    </select>
+    <input id="scrub" type="range" min="0" max="0" value="0" step="1">
+    <span class="time" id="time">tick 0 / 0</span>
+  </div>
+  <div class="ctrl">
+    <label><input type="checkbox" id="optTrails" checked> trails</label>
+    <select id="trailLen" title="Trail length">
+      <option value="20">1 s</option><option value="60" selected>3 s</option>
+      <option value="200">10 s</option><option value="600">30 s</option>
+    </select>
+    <label><input type="checkbox" id="optDeaths" checked> recent deaths</label>
+    <label><input type="checkbox" id="optAllDeaths"> all deaths</label>
+    <label><input type="checkbox" id="optVision"> vision cones</label>
+    <label><input type="checkbox" id="optHeights" checked> heights</label>
+    <span class="spacer" style="flex:1"></span>
+    <span class="kbd">space play · ←/→ step · shift ±1 s · [ ] speed · click sphere to select</span>
+  </div>
+</footer>
+<!--REPLAY_DATA-->
+<script>
+"use strict";
+
+// ------------------------------------------------------------------ model
+const TEAM_COLORS = { red: "#ff5f5f", blue: "#4fa3ff" };
+const EXTRA_COLORS = ["#5fd38a", "#e5b454", "#c08cff", "#ff8fd0"];
+const DEATH_FADE_TICKS = 200;
+
+function teamColor(team, teams) {
+  if (TEAM_COLORS[team]) return TEAM_COLORS[team];
+  const i = Math.max(0, (teams || []).indexOf(team));
+  return EXTRA_COLORS[i % EXTRA_COLORS.length];
+}
+
+function fail(msg) { throw new Error("Invalid replay: " + msg); }
+
+/** Validate a parsed replay object and build lookup structures. */
+function parseReplay(raw) {
+  if (!raw || typeof raw !== "object") fail("not a JSON object");
+  if (raw.version !== 1) fail("unsupported version " + raw.version);
+  for (const key of ["meta", "map", "spheres", "frames", "events"]) {
+    if (!(key in raw)) fail("missing '" + key + "'");
+  }
+  const { meta, map, spheres, frames, events } = raw;
+  const teams = meta.teams || ["red", "blue"];
+  if (!Array.isArray(frames) || frames.length === 0) fail("no frames");
+  const n = spheres.length;
+  let prev = -1;
+  for (let i = 0; i < frames.length; i++) {
+    const f = frames[i];
+    if (typeof f.t !== "number" || f.t <= prev) fail("frame " + i + " tick not increasing");
+    if (!Array.isArray(f.s) || f.s.length !== n) fail("frame " + i + " has " + (f.s && f.s.length) + " spheres, expected " + n);
+    if (!Array.isArray(f.f) || f.f.length !== teams.length) fail("frame " + i + " flag count");
+    if (!Array.isArray(f.sc) || f.sc.length !== teams.length) fail("frame " + i + " score length");
+    prev = f.t;
+  }
+  if (!Array.isArray(map.obstacles) || !Array.isArray(map.ramps)) fail("map obstacles/ramps");
+  const ticks = frames.map(f => f.t);
+  const evs = events.map((e, i) => Object.assign({ idx: i, show: e.tick + 1 }, e));
+  evs.sort((a, b) => a.tick - b.tick || a.idx - b.idx);
+  const hasActions = frames.some(f => Array.isArray(f.a));
+  const c = raw.constants || {};
+  return {
+    meta, map, spheres, frames, events: evs, teams, ticks, hasActions,
+    tickRate: meta.tick_rate || 20,
+    radius: c.sphere_radius || 1, capture: c.flag_capture_radius || 2.5,
+    vision: c.vision_range || 40, halfAngle: (c.vision_half_angle_deg || 35) * Math.PI / 180,
+    arena: map.arena || 200,
+    lastTick: ticks[ticks.length - 1],
+    deaths: evs.filter(e => e.type === "death"),
+  };
+}
+
+/** Index of the last frame with t <= tick (or first with t >= tick when ceil). */
+function findFrame(ticks, tick, ceil) {
+  let lo = 0, hi = ticks.length - 1;
+  if (tick <= ticks[0]) return 0;
+  if (tick >= ticks[hi]) return hi;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ticks[mid] <= tick) lo = mid; else hi = mid - 1;
+  }
+  if (ceil && ticks[lo] < tick && lo + 1 < ticks.length) return lo + 1;
+  return lo;
+}
+
+function fmtTime(tick, rate) {
+  const s = tick / (rate || 20);
+  const m = Math.floor(s / 60);
+  return m + ":" + (s - m * 60).toFixed(1).padStart(4, "0");
+}
+
+function tag(R, sid) {
+  const s = R.spheres[sid];
+  return (s.team[0] || "?").toUpperCase() + s.player;
+}
+
+function describe(R, e) {
+  const who = e.team.toUpperCase() + " P" + e.player;
+  if (e.type === "death") {
+    const why = e.reason === "player" ? "collision" : e.reason;
+    return who + " died (" + why + ")" + (e.carrying ? " · dropped " + e.carrying.toUpperCase() + " flag" : "");
+  }
+  if (e.type === "pickup") return who + " took the " + e.flag.toUpperCase() + " flag";
+  if (e.type === "capture") return who + " captured! " + (e.score ? e.score.join(" : ") : "");
+  return who + " " + e.type;
+}
+
+// --------------------------------------------------------------- rendering
+function heightColor(h) {
+  // 1.5 (low) .. 4.0 (tall): slate -> pale steel
+  const t = Math.max(0, Math.min(1, (h - 1.5) / 2.5));
+  const a = [44, 50, 66], b = [128, 140, 168];
+  return "rgb(" + a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",") + ")";
+}
+
+function hexAlpha(hex, alpha) {
+  const v = parseInt(hex.slice(1), 16);
+  return "rgba(" + (v >> 16) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + alpha + ")";
+}
+
+function makeView(width, height, arena) {
+  const pad = 14;
+  const scale = Math.max(0.5, (Math.min(width, height) - 2 * pad) / arena);
+  return {
+    width, height, scale, cx: width / 2, cy: height / 2,
+    sx(x) { return this.cx + x * scale; },
+    sy(y) { return this.cy - y * scale; },
+    wx(px) { return (px - this.cx) / scale; },
+    wy(py) { return (this.cy - py) / scale; },
+  };
+}
+
+function drawMap(ctx, R, V, opts) {
+  const half = R.arena / 2, s = V.scale;
+  ctx.fillStyle = "#0d1016";
+  ctx.fillRect(0, 0, V.width, V.height);
+  ctx.fillStyle = "#121722";
+  ctx.fillRect(V.sx(-half), V.sy(half), R.arena * s, R.arena * s);
+  ctx.strokeStyle = "#1a2030"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let g = -half + 20; g < half; g += 20) {
+    ctx.moveTo(V.sx(g), V.sy(-half)); ctx.lineTo(V.sx(g), V.sy(half));
+    ctx.moveTo(V.sx(-half), V.sy(g)); ctx.lineTo(V.sx(half), V.sy(g));
+  }
+  ctx.stroke();
+  ctx.strokeStyle = "#3a4560"; ctx.lineWidth = 2;
+  ctx.strokeRect(V.sx(-half), V.sy(half), R.arena * s, R.arena * s);
+
+  // home bases
+  for (const team of R.teams) {
+    const h = R.map.homes[team];
+    if (!h) continue;
+    const col = teamColor(team, R.teams);
+    ctx.fillStyle = hexAlpha(col, 0.07);
+    ctx.beginPath(); ctx.arc(V.sx(h[0]), V.sy(h[1]), 10 * s, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = hexAlpha(col, 0.55); ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(V.sx(h[0]), V.sy(h[1]), Math.max(R.capture * s, 6), 0, 2 * Math.PI); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = hexAlpha(col, 0.7);
+    ctx.font = "600 11px system-ui, sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(team.toUpperCase() + " BASE", V.sx(h[0]), V.sy(h[1]) + 10 * s + 13);
+  }
+
+  // obstacles
+  ctx.lineJoin = "round";
+  for (const o of R.map.obstacles) {
+    ctx.beginPath();
+    o.p.forEach((p, i) => i ? ctx.lineTo(V.sx(p[0]), V.sy(p[1])) : ctx.moveTo(V.sx(p[0]), V.sy(p[1])));
+    ctx.closePath();
+    ctx.fillStyle = heightColor(o.h); ctx.fill();
+    ctx.strokeStyle = "#0a0d12"; ctx.lineWidth = 1.5; ctx.stroke();
+    if (opts.heights && s >= 2.5) {
+      let mx = 0, my = 0;
+      o.p.forEach(p => { mx += p[0]; my += p[1]; });
+      mx /= o.p.length; my /= o.p.length;
+      ctx.fillStyle = "rgba(10,13,18,.75)"; ctx.font = "10px system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(o.h.toFixed(1), V.sx(mx), V.sy(my));
+      ctx.textBaseline = "alphabetic";
+    }
+  }
+
+  // ramps: gradient from the low edge (corners 0,1) to the high edge (corners 2,3)
+  for (const r of R.map.ramps) {
+    const c = r.c;
+    const lowX = (c[0][0] + c[1][0]) / 2, lowY = (c[0][1] + c[1][1]) / 2;
+    const hiX = (c[2][0] + c[3][0]) / 2, hiY = (c[2][1] + c[3][1]) / 2;
+    const g = ctx.createLinearGradient(V.sx(lowX), V.sy(lowY), V.sx(hiX), V.sy(hiY));
+    g.addColorStop(0, "rgba(229,180,84,0.10)");
+    g.addColorStop(1, heightColor(r.h));
+    ctx.beginPath();
+    c.forEach((p, i) => i ? ctx.lineTo(V.sx(p[0]), V.sy(p[1])) : ctx.moveTo(V.sx(p[0]), V.sy(p[1])));
+    ctx.closePath();
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = "rgba(229,180,84,0.55)"; ctx.lineWidth = 1; ctx.stroke();
+    // uphill chevrons
+    const dx = hiX - lowX, dy = hiY - lowY, len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len, uy = dy / len, w = 1.2;
+    ctx.strokeStyle = "rgba(229,180,84,0.75)"; ctx.lineWidth = 1.3;
+    for (const f of [0.3, 0.6]) {
+      const px = lowX + dx * f, py = lowY + dy * f;
+      ctx.beginPath();
+      ctx.moveTo(V.sx(px - ux * w - uy * w), V.sy(py - uy * w + ux * w));
+      ctx.lineTo(V.sx(px), V.sy(py));
+      ctx.lineTo(V.sx(px - ux * w + uy * w), V.sy(py - uy * w - ux * w));
+      ctx.stroke();
+    }
+  }
+
+  // legend
+  const lx = 12, ly = V.height - 22, lw = 110;
+  const lg = ctx.createLinearGradient(lx, 0, lx + lw, 0);
+  lg.addColorStop(0, heightColor(1.5)); lg.addColorStop(1, heightColor(4));
+  ctx.fillStyle = lg; ctx.fillRect(lx, ly, lw, 8);
+  ctx.fillStyle = "#8a93a6"; ctx.font = "10px system-ui, sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("obstacle height 1.5 → 4", lx, ly - 4);
+}
+
+function drawFlagGlyph(ctx, x, y, color, size) {
+  ctx.strokeStyle = "#e6e9ef"; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - size * 1.6); ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(x, y - size * 1.6); ctx.lineTo(x + size * 1.1, y - size * 1.2);
+  ctx.lineTo(x, y - size * 0.8); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#0d1016"; ctx.lineWidth = 1; ctx.stroke();
+}
+
+function drawDeath(ctx, V, e, alpha) {
+  const x = V.sx(e.x), y = V.sy(e.y), r = 5;
+  ctx.globalAlpha = alpha;
+  if (e.reason === "wall") {
+    ctx.strokeStyle = "#ff9a3c"; ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r);
+    ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r);
+    ctx.stroke();
+  } else {
+    ctx.strokeStyle = "#d46bff"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.stroke();
+    ctx.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      ctx.moveTo(x + Math.cos(a) * (r + 1.5), y + Math.sin(a) * (r + 1.5));
+      ctx.lineTo(x + Math.cos(a) * (r + 4.5), y + Math.sin(a) * (r + 4.5));
+    }
+    ctx.stroke();
+  }
+  if (e.carrying) {
+    ctx.strokeStyle = "#e5b454"; ctx.lineWidth = 1;
+    ctx.strokeRect(x - r - 3, y - r - 3, 2 * r + 6, 2 * r + 6);
+  }
+  ctx.fillStyle = teamColor(e.team, null);
+  ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 2 * Math.PI); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+function sphereRadiusPx(V) { return Math.max(7, V.scale * 1.0); }
+
+function drawFrame(ctx, R, V, idx, opts) {
+  const frame = R.frames[idx], t = frame.t;
+  const nS = R.spheres.length;
+
+  // trails
+  if (opts.trails) {
+    const from = t - opts.trailTicks;
+    ctx.lineCap = "round";
+    for (let sid = 0; sid < nS; sid++) {
+      const col = teamColor(R.spheres[sid].team, R.teams);
+      let j = idx;
+      let prev = null;
+      while (j > 0 && R.frames[j - 1].t >= from) j--;
+      for (; j <= idx; j++) {
+        const s = R.frames[j].s[sid];
+        if (!s[5]) { prev = null; continue; }
+        if (prev && Math.hypot(s[0] - prev[0], s[1] - prev[1]) < 12) {
+          const age = (t - R.frames[j].t) / opts.trailTicks;
+          ctx.strokeStyle = hexAlpha(col, 0.65 * (1 - age));
+          ctx.lineWidth = Math.max(1, 3 * (1 - age));
+          ctx.beginPath(); ctx.moveTo(V.sx(prev[0]), V.sy(prev[1])); ctx.lineTo(V.sx(s[0]), V.sy(s[1])); ctx.stroke();
+        }
+        prev = s;
+      }
+    }
+  }
+
+  // deaths
+  if (opts.deaths || opts.allDeaths) {
+    for (const e of R.deaths) {
+      if (e.show > t) break;
+      const age = t - e.show;
+      if (opts.allDeaths) drawDeath(ctx, V, e, age < DEATH_FADE_TICKS ? 1 : 0.35);
+      else if (age < DEATH_FADE_TICKS) drawDeath(ctx, V, e, 1 - age / DEATH_FADE_TICKS * 0.85);
+    }
+  }
+
+  // vision cones
+  for (let sid = 0; sid < nS; sid++) {
+    if (!(opts.vision || opts.selected === sid)) continue;
+    const s = frame.s[sid];
+    if (!s[5]) continue;
+    const col = teamColor(R.spheres[sid].team, R.teams);
+    const rad = R.vision * V.scale;
+    // screen angle: forward (sin yaw, cos yaw) in world -> (sin yaw, -cos yaw) on screen
+    const a = s[3] - Math.PI / 2;
+    ctx.fillStyle = hexAlpha(col, opts.selected === sid ? 0.12 : 0.06);
+    ctx.strokeStyle = hexAlpha(col, 0.3); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(V.sx(s[0]), V.sy(s[1]));
+    ctx.arc(V.sx(s[0]), V.sy(s[1]), rad, a - R.halfAngle, a + R.halfAngle);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+
+  // flags lying on the ground
+  R.teams.forEach((team, k) => {
+    const f = frame.f[k];
+    if (f[2] >= 0) return;
+    const col = teamColor(team, R.teams);
+    const home = R.map.homes[team];
+    const atHome = home && Math.abs(home[0] - f[0]) < 0.01 && Math.abs(home[1] - f[1]) < 0.01;
+    if (!atHome) {
+      ctx.strokeStyle = hexAlpha(col, 0.8); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(V.sx(f[0]), V.sy(f[1]), 9, 0, 2 * Math.PI); ctx.stroke();
+    }
+    drawFlagGlyph(ctx, V.sx(f[0]), V.sy(f[1]), col, 7);
+  });
+
+  // spheres
+  const pr = sphereRadiusPx(V);
+  for (let sid = 0; sid < nS; sid++) {
+    const s = frame.s[sid];
+    if (!s[5]) continue;
+    const info = R.spheres[sid];
+    const col = teamColor(info.team, R.teams);
+    const x = V.sx(s[0]), y = V.sy(s[1]);
+    const lift = Math.max(0, s[2] - R.radius);
+    if (lift > 0.05) {
+      ctx.fillStyle = "rgba(0,0,0,.45)";
+      ctx.beginPath(); ctx.arc(x + lift * 1.6, y + lift * 1.6, pr, 0, 2 * Math.PI); ctx.fill();
+    }
+    let carried = -1;
+    frame.f.forEach((f, k) => { if (f[2] === sid) carried = k; });
+    if (carried >= 0) {
+      const fc = teamColor(R.teams[carried], R.teams);
+      ctx.fillStyle = hexAlpha(fc, 0.25);
+      ctx.beginPath(); ctx.arc(x, y, pr + 9, 0, 2 * Math.PI); ctx.fill();
+      ctx.strokeStyle = fc; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y, pr + 5, 0, 2 * Math.PI); ctx.stroke();
+    }
+    // heading arrow, length grows with speed
+    const hx = Math.sin(s[3]), hy = -Math.cos(s[3]);
+    const len = pr + 6 + s[4] * 0.9;
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + hx * pr, y + hy * pr); ctx.lineTo(x + hx * len, y + hy * len); ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(x + hx * (len + 5), y + hy * (len + 5));
+    ctx.lineTo(x + hx * len - hy * 4, y + hy * len + hx * 4);
+    ctx.lineTo(x + hx * len + hy * 4, y + hy * len - hx * 4);
+    ctx.closePath(); ctx.fill();
+    // body
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(x, y, pr, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = opts.selected === sid ? "#e5b454" : (lift > 0.05 ? "#ffffff" : "#0d1016");
+    ctx.lineWidth = opts.selected === sid ? 2.5 : 1.5; ctx.stroke();
+    ctx.fillStyle = "#0d1016"; ctx.font = "700 " + Math.round(pr * 1.25) + "px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(String(info.player), x, y + 0.5);
+    ctx.textBaseline = "alphabetic";
+    if (carried >= 0) drawFlagGlyph(ctx, x + pr * 0.6, y - pr * 0.6, teamColor(R.teams[carried], R.teams), 6);
+  }
+}
+
+function drawTimeline(ctx, R, w, h, tick) {
+  ctx.fillStyle = "#0e121a"; ctx.fillRect(0, 0, w, h);
+  const X = t => (t / Math.max(1, R.lastTick)) * (w - 2) + 1;
+  for (const e of R.events) {
+    const x = Math.round(X(e.show)) + 0.5;
+    let top, col;
+    if (e.type === "capture") { top = 0; col = teamColor(e.team, R.teams); }
+    else if (e.type === "pickup") { top = h * 0.35; col = hexAlpha(teamColor(e.team, R.teams), 0.8); }
+    else { top = h * 0.7; col = e.reason === "wall" ? "rgba(255,154,60,.6)" : "rgba(212,107,255,.7)"; }
+    ctx.strokeStyle = col; ctx.lineWidth = e.type === "capture" ? 2 : 1;
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, h); ctx.stroke();
+  }
+  const px = X(tick);
+  ctx.fillStyle = "rgba(229,180,84,.18)"; ctx.fillRect(0, 0, px, h);
+  ctx.strokeStyle = "#e5b454"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+}
+
+// ---------------------------------------------------------------- the app
+function App() {
+  const $ = id => document.getElementById(id);
+  const canvas = $("view"), ctx = canvas.getContext("2d");
+  const tl = $("timeline"), tctx = tl.getContext("2d");
+  const mapLayer = document.createElement("canvas"), mctx = mapLayer.getContext("2d");
+  const st = { R: null, V: null, idx: 0, tick: 0, playing: false, speed: 1, last: 0,
+               hover: -1, selected: -1, dirty: true, mapDirty: true, lastEvent: -2 };
+  let dpr = 1;
+
+  const opts = () => ({
+    trails: $("optTrails").checked, trailTicks: +$("trailLen").value,
+    deaths: $("optDeaths").checked, allDeaths: $("optAllDeaths").checked,
+    vision: $("optVision").checked, heights: $("optHeights").checked, selected: st.selected,
+  });
+
+  function showError(err) {
+    const box = $("error");
+    box.textContent = String(err && err.message || err);
+    box.style.display = "block";
+    console.error(err);
+  }
+
+  function resize() {
+    dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(r.width * dpr));
+    canvas.height = Math.max(1, Math.round(r.height * dpr));
+    mapLayer.width = canvas.width; mapLayer.height = canvas.height;
+    const tr = tl.getBoundingClientRect();
+    tl.width = Math.max(1, Math.round(tr.width * dpr)); tl.height = Math.max(1, Math.round(tr.height * dpr));
+    if (st.R) st.V = makeView(r.width, r.height, st.R.arena);
+    st.mapDirty = st.dirty = true;
+  }
+
+  function load(raw, name) {
+    $("error").style.display = "none";
+    const R = parseReplay(raw);
+    st.R = R; st.idx = 0; st.tick = R.ticks[0]; st.selected = -1; st.hover = -1; st.lastEvent = -2;
+    setPlaying(false);
+    const m = R.meta;
+    $("meta").textContent = (name ? name + " · " : "") + m.label_a + " (" + m.a_side + ") vs " +
+      m.label_b + " (" + m.b_side + ") · seed " + m.seed + " · " + m.ticks + " ticks" +
+      (m.every > 1 ? " · every " + m.every : "") + " · A " + m.result;
+    $("drop").classList.add("hidden");
+    const scrub = $("scrub");
+    scrub.min = R.ticks[0]; scrub.max = R.lastTick; scrub.step = m.every || 1; scrub.value = st.tick;
+    buildPlayers(); buildEvents(); resize();
+    const hash = /t=(\d+)/.exec(location.hash || "");
+    if (hash) seek(+hash[1]);
+    update(true);
+  }
+
+  function readFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => { try { load(JSON.parse(reader.result), file.name); } catch (e) { showError(e); } };
+    reader.onerror = () => showError(reader.error);
+    reader.readAsText(file);
+  }
+
+  // ---- sidebar
+  function buildPlayers() {
+    const R = st.R, box = $("players");
+    box.innerHTML = "";
+    R.spheres.forEach((s, sid) => {
+      const row = document.createElement("div");
+      row.className = "prow";
+      const col = teamColor(s.team, R.teams);
+      row.innerHTML =
+        '<div class="badge" style="background:' + col + '">' + tag(R, sid) + '</div>' +
+        '<div class="pname"></div><div class="pflagbox"></div>' +
+        '<div class="pstat"></div>' +
+        (R.hasActions && s.actions ? '<div class="act">thr <span class="bar"><i class="bt"></i></span>' +
+          ' turn <span class="bar"><i class="bu"></i></span> <span class="jump">J</span></div>' : "");
+      row.querySelector(".pname").textContent = s.label + (s.kind === "npz" ? " · policy" : "");
+      row.addEventListener("click", () => { st.selected = st.selected === sid ? -1 : sid; st.dirty = true; });
+      box.appendChild(row);
+    });
+  }
+
+  function setBar(el, v) {
+    v = Math.max(-1, Math.min(1, v));
+    if (v >= 0) { el.style.left = "50%"; el.style.width = (v * 50) + "%"; }
+    else { el.style.left = (50 + v * 50) + "%"; el.style.width = (-v * 50) + "%"; }
+  }
+
+  function lastDeath(sid, tick) {
+    let found = null;
+    for (const e of st.R.deaths) { if (e.show > tick) break; if (e.id === sid) found = e; }
+    return found;
+  }
+
+  function updatePlayers() {
+    const R = st.R, frame = R.frames[st.idx];
+    const rows = $("players").children;
+    R.spheres.forEach((info, sid) => {
+      const row = rows[sid], s = frame.s[sid];
+      row.classList.toggle("dead", !s[5]);
+      row.classList.toggle("sel", st.selected === sid);
+      let flag = -1;
+      frame.f.forEach((f, k) => { if (f[2] === sid) flag = k; });
+      const fb = row.querySelector(".pflagbox");
+      fb.innerHTML = flag >= 0 ? '<span class="pflag" style="background:' +
+        teamColor(R.teams[flag], R.teams) + '">⚑ ' + R.teams[flag].toUpperCase() + '</span>' : "";
+      let text;
+      if (s[5]) {
+        text = "v " + s[4].toFixed(1) + "  z " + s[2].toFixed(2) + "  yaw " + Math.round(s[3] * 180 / Math.PI) + "°" +
+               "  (" + s[0].toFixed(0) + ", " + s[1].toFixed(0) + ")";
+      } else {
+        const d = lastDeath(sid, frame.t);
+        text = "dead" + (d ? " · " + (d.reason === "player" ? "collision" : d.reason) + " · " +
+          ((frame.t - d.show) / R.tickRate).toFixed(1) + " s ago" : "");
+      }
+      row.querySelector(".pstat").textContent = text;
+      const act = row.querySelector(".act");
+      if (act) {
+        const a = frame.a ? frame.a[sid] : null;
+        act.style.visibility = a ? "visible" : "hidden";
+        if (a) {
+          setBar(act.querySelector(".bt"), a[0]); setBar(act.querySelector(".bu"), a[1]);
+          act.querySelector(".jump").classList.toggle("on", !!a[2]);
+          act.title = "throttle " + a[0] + ", turn " + a[1] + ", jump " + !!a[2];
+        }
+      }
+    });
+  }
+
+  function buildEvents() {
+    const R = st.R, box = $("events");
+    box.innerHTML = "";
+    const icons = { capture: ["★", "#e5b454"], pickup: ["⚑", null], wall: ["✕", "#ff9a3c"], player: ["✺", "#d46bff"] };
+    R.events.forEach((e, i) => {
+      const kind = e.type === "death" ? (e.reason === "wall" ? "wall" : "player") : e.type;
+      const [ico, icol] = icons[kind] || ["•", null];
+      const el = document.createElement("div");
+      el.className = "ev"; el.dataset.kind = kind; el.dataset.i = i;
+      el.innerHTML = '<time>' + fmtTime(e.tick, R.tickRate) + '</time><span class="ico"></span><span></span>';
+      const ic = el.children[1];
+      ic.textContent = ico; ic.style.color = icol || teamColor(e.team, R.teams);
+      el.children[2].textContent = describe(R, e);
+      el.children[2].style.color = e.type === "death" ? "" : teamColor(e.team, R.teams);
+      el.title = "tick " + e.tick + " at (" + e.x + ", " + e.y + ")";
+      el.addEventListener("click", () => { setPlaying(false); seekEvent(e); });
+      box.appendChild(el);
+    });
+    applyFilters();
+  }
+
+  function applyFilters() {
+    const on = {};
+    document.querySelectorAll("#evfilters input").forEach(cb => { on[cb.dataset.f] = cb.checked; });
+    for (const el of $("events").children) el.style.display = on[el.dataset.kind] ? "" : "none";
+  }
+
+  function updateEvents() {
+    const R = st.R, t = R.frames[st.idx].t;
+    let cur = -1;
+    for (let i = 0; i < R.events.length && R.events[i].show <= t; i++) cur = i;
+    if (cur === st.lastEvent) return;
+    const items = $("events").children;
+    const lo = Math.min(cur, st.lastEvent), hi = Math.max(cur, st.lastEvent);
+    const range = st.lastEvent === -2 ? [0, items.length - 1] : [Math.max(0, lo), Math.min(items.length - 1, hi + 1)];
+    for (let i = range[0]; i <= range[1]; i++) {
+      items[i].classList.toggle("future", i > cur);
+      items[i].classList.toggle("current", i === cur);
+    }
+    st.lastEvent = cur;
+    if (cur >= 0 && $("autoscroll").checked && items[cur].style.display !== "none") {
+      const el = items[cur], box = $("events");
+      if (el.offsetTop < box.scrollTop || el.offsetTop > box.scrollTop + box.clientHeight - 24)
+        box.scrollTop = el.offsetTop - box.clientHeight / 2;
+    }
+  }
+
+  function updateScore() {
+    const R = st.R, sc = R.frames[st.idx].sc;
+    const parts = R.teams.map((team, k) =>
+      '<div class="team" style="color:' + teamColor(team, R.teams) + '">' + sc[k] +
+      '<small>' + escapeHtml(R.meta.labels ? R.meta.labels[team] : team) + '</small></div>');
+    const html = parts.join('<span class="sep">:</span>');
+    if ($("score").innerHTML !== html) $("score").innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  // ---- time
+  function seek(tick, ceil) {
+    const R = st.R;
+    if (!R) return;
+    tick = Math.max(R.ticks[0], Math.min(R.lastTick, tick));
+    st.idx = findFrame(R.ticks, tick, ceil);
+    st.tick = R.ticks[st.idx];
+    st.dirty = true;
+  }
+
+  function seekEvent(e) { seek(e.show, true); }
+
+  function step(n) {
+    if (!st.R) return;
+    setPlaying(false);
+    st.idx = Math.max(0, Math.min(st.R.frames.length - 1, st.idx + n));
+    st.tick = st.R.ticks[st.idx]; st.dirty = true;
+  }
+
+  function setPlaying(on) {
+    if (on && st.R && st.idx >= st.R.frames.length - 1) seek(st.R.ticks[0]);
+    st.playing = !!on && !!st.R;
+    $("play").textContent = st.playing ? "❚❚ Pause" : "▶ Play";
+    st.last = 0;
+  }
+
+  function setSpeed(delta) {
+    const sel = $("speed");
+    sel.selectedIndex = Math.max(0, Math.min(sel.options.length - 1, sel.selectedIndex + delta));
+    st.speed = +sel.value;
+  }
+
+  // ---- drawing
+  function update(force) {
+    const R = st.R;
+    if (!R) return;
+    if (st.mapDirty) {
+      mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawMap(mctx, R, st.V, opts());
+      st.mapDirty = false; force = true;
+    }
+    if (!force && !st.dirty) return;
+    st.dirty = false;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(mapLayer, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFrame(ctx, R, st.V, st.idx, opts());
+    tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawTimeline(tctx, R, tl.width / dpr, tl.height / dpr, R.frames[st.idx].t);
+    const t = R.frames[st.idx].t;
+    $("scrub").value = t;
+    $("time").textContent = "tick " + t + " / " + R.lastTick + " · " + fmtTime(t, R.tickRate);
+    updateScore(); updatePlayers(); updateEvents(); updateTooltip();
+  }
+
+  function loop(ts) {
+    if (st.playing && st.R) {
+      if (st.last) {
+        const dt = Math.min(0.25, (ts - st.last) / 1000);
+        st.tick += dt * st.R.tickRate * st.speed;
+        const idx = findFrame(st.R.ticks, st.tick, false);
+        if (idx !== st.idx) { st.idx = idx; st.dirty = true; }
+        if (st.tick >= st.R.lastTick) { st.idx = st.R.frames.length - 1; setPlaying(false); st.dirty = true; }
+      }
+      st.last = ts;
+    }
+    try { update(false); } catch (e) { setPlaying(false); showError(e); }
+    requestAnimationFrame(loop);
+  }
+
+  // ---- hover / selection
+  let mouse = null;
+  function sphereAt(px, py) {
+    const R = st.R, V = st.V;
+    if (!R || !V) return -1;
+    const frame = R.frames[st.idx], pr = sphereRadiusPx(V) + 4;
+    let best = -1, bestD = pr;
+    frame.s.forEach((s, sid) => {
+      if (!s[5]) return;
+      const d = Math.hypot(V.sx(s[0]) - px, V.sy(s[1]) - py);
+      if (d <= bestD) { best = sid; bestD = d; }
+    });
+    return best;
+  }
+
+  function updateTooltip() {
+    const tip = $("tooltip");
+    if (!mouse || !st.R) { tip.style.display = "none"; return; }
+    const sid = sphereAt(mouse.x, mouse.y);
+    st.hover = sid;
+    canvas.style.cursor = sid >= 0 ? "pointer" : "default";
+    if (sid < 0) {
+      tip.style.display = "block";
+      tip.textContent = "(" + st.V.wx(mouse.x).toFixed(1) + ", " + st.V.wy(mouse.y).toFixed(1) + ")";
+    } else {
+      const R = st.R, frame = R.frames[st.idx], s = frame.s[sid], info = R.spheres[sid];
+      let carrying = "-";
+      frame.f.forEach((f, k) => { if (f[2] === sid) carrying = R.teams[k] + " flag"; });
+      const lines = [
+        info.team.toUpperCase() + " P" + info.player + "  (id " + sid + ")  " + info.label,
+        "pos    " + s[0].toFixed(2) + ", " + s[1].toFixed(2) + "   z " + s[2].toFixed(2),
+        "yaw    " + (s[3] * 180 / Math.PI).toFixed(0) + "°   speed " + s[4].toFixed(2),
+        "carry  " + carrying,
+      ];
+      const a = frame.a ? frame.a[sid] : null;
+      if (a) lines.push("action thr " + a[0] + "  turn " + a[1] + "  jump " + (a[2] ? "yes" : "no"));
+      tip.textContent = lines.join("\n");
+      tip.style.display = "block";
+    }
+    const stage = $("stage").getBoundingClientRect();
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = mouse.x + 14, y = mouse.y + 14;
+    if (x + w > stage.width - 4) x = mouse.x - w - 14;
+    if (y + h > stage.height - 4) y = mouse.y - h - 14;
+    tip.style.left = x + "px"; tip.style.top = y + "px";
+  }
+
+  // ---- wiring
+  $("open").addEventListener("click", () => $("file").click());
+  $("file").addEventListener("change", ev => { if (ev.target.files[0]) readFile(ev.target.files[0]); ev.target.value = ""; });
+  let dragDepth = 0;
+  window.addEventListener("dragenter", ev => { ev.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+  window.addEventListener("dragleave", ev => { ev.preventDefault(); if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+  window.addEventListener("dragover", ev => ev.preventDefault());
+  window.addEventListener("drop", ev => {
+    ev.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+    const file = ev.dataTransfer && ev.dataTransfer.files[0];
+    if (file) readFile(file);
+    else if (!st.R) $("drop").classList.remove("hidden");
+  });
+  $("play").addEventListener("click", () => setPlaying(!st.playing));
+  $("back").addEventListener("click", () => step(-1));
+  $("fwd").addEventListener("click", () => step(1));
+  $("speed").addEventListener("change", () => { st.speed = +$("speed").value; });
+  $("scrub").addEventListener("input", () => { setPlaying(false); seek(+$("scrub").value); });
+  for (const id of ["optTrails", "trailLen", "optDeaths", "optAllDeaths", "optVision"])
+    $(id).addEventListener("change", () => { st.dirty = true; });
+  $("optHeights").addEventListener("change", () => { st.mapDirty = true; });
+  document.querySelectorAll("#evfilters input").forEach(cb => cb.addEventListener("change", applyFilters));
+
+  let tlDrag = false;
+  const tlSeek = ev => {
+    if (!st.R) return;
+    const r = tl.getBoundingClientRect();
+    seek(Math.round((ev.clientX - r.left) / r.width * st.R.lastTick));
+  };
+  tl.addEventListener("mousedown", ev => { tlDrag = true; setPlaying(false); tlSeek(ev); });
+  window.addEventListener("mousemove", ev => { if (tlDrag) tlSeek(ev); });
+  window.addEventListener("mouseup", () => { tlDrag = false; });
+
+  canvas.addEventListener("mousemove", ev => {
+    const r = canvas.getBoundingClientRect();
+    mouse = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    if (st.R) updateTooltip();
+  });
+  canvas.addEventListener("mouseleave", () => { mouse = null; $("tooltip").style.display = "none"; });
+  canvas.addEventListener("click", () => {
+    if (!st.R || !mouse) return;
+    const sid = sphereAt(mouse.x, mouse.y);
+    st.selected = sid === st.selected ? -1 : sid;
+    st.dirty = true;
+  });
+
+  window.addEventListener("keydown", ev => {
+    if (!st.R || ev.target.tagName === "SELECT" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const big = Math.max(1, Math.round(st.R.tickRate / (st.R.meta.every || 1)));
+    if (ev.key === " ") { setPlaying(!st.playing); }
+    else if (ev.key === "ArrowRight") step(ev.shiftKey ? big : 1);
+    else if (ev.key === "ArrowLeft") step(ev.shiftKey ? -big : -1);
+    else if (ev.key === "]") setSpeed(1);
+    else if (ev.key === "[") setSpeed(-1);
+    else if (ev.key === "Home") { setPlaying(false); seek(0); }
+    else if (ev.key === "End") { setPlaying(false); seek(st.R.lastTick); }
+    else if (ev.key === "Escape") { st.selected = -1; st.dirty = true; }
+    else return;
+    ev.preventDefault();
+  });
+  window.addEventListener("resize", resize);
+  window.addEventListener("error", ev => showError(ev.error || ev.message));
+
+  resize();
+  const embedded = document.getElementById("replay-data");
+  if (embedded) {
+    try { load(JSON.parse(embedded.textContent), "embedded"); } catch (e) { showError(e); }
+  }
+  requestAnimationFrame(loop);
+  return st;
+}
+
+if (typeof module === "object" && module.exports) {
+  module.exports = { parseReplay, findFrame, describe, fmtTime, makeView, drawMap, drawFrame, drawTimeline };
+} else if (typeof document !== "undefined") {
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { window.viewer = App(); });
+  else window.viewer = App();
+}
+</script>
+</body>
+</html>
