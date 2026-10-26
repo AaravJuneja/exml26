@@ -87,11 +87,82 @@
   .kbd { color: var(--faint); font-size: 11px; }
   input[type=checkbox] { accent-color: var(--accent); }
   input[type=file] { display: none; }
+
+  /* ---- gallery (only when docs/gallery/data/gallery.js is present) */
+  a { color: #7fb8ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .home { color: var(--dim); font-size: 12px; }
+  #tabs { display: none; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+  body.has-gallery #tabs { display: flex; }
+  #tabs button { border: 0; background: transparent; border-radius: 6px; padding: 3px 12px; color: var(--dim); }
+  #tabs button.on { background: var(--panel2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+  #gallery { display: none; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto;
+    min-height: 0; padding-bottom: 14px; }
+  body.has-gallery main { grid-template-columns: 262px 1fr 340px; }
+  body.has-gallery #gallery { display: block; }
+  #gallery h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim);
+    margin: 0; padding: 12px 12px 6px; font-weight: 600; }
+  .card { margin: 0 10px 4px; padding: 9px 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; }
+  .card .big { font-size: 16px; font-weight: 700; }
+  .card .sub { color: var(--dim); font-size: 11.5px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .chip { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #0f131b; border: 1px solid var(--line);
+    color: var(--dim); font-variant-numeric: tabular-nums; }
+  .glist { padding: 0 8px; }
+  .gitem { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; align-items: center; padding: 5px 8px;
+    border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
+  .gitem:hover { background: var(--panel2); }
+  .gitem.on { border-color: var(--accent); background: var(--panel2); }
+  .gitem .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gitem .s { color: var(--dim); font-size: 11px; grid-column: 1 / 3; }
+  .res { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; padding: 1px 6px; border-radius: 4px; }
+  .res.win { background: #173a26; color: #7be0a0; } .res.loss { background: #3a1a1d; color: #ff9aa2; }
+  .res.draw { background: #2c2a1a; color: #e5d27a; }
+  .gform { display: grid; grid-template-columns: 62px 1fr; gap: 6px 8px; align-items: center; padding: 2px 12px 6px; }
+  .gform label { color: var(--dim); font-size: 12px; }
+  .gform select { width: 100%; padding: 3px 6px; }
+  .mini { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .mini td { padding: 2px 4px; border-bottom: 1px solid #1f2635; }
+  .mini td.n { text-align: right; }
+  .hint { color: var(--faint); font-size: 11.5px; padding: 4px 12px; }
+  #history { display: none; overflow-y: auto; min-height: 0; grid-row: 2 / 4; }
+  body.mode-history main, body.mode-history footer { display: none; }
+  body.mode-history #history { display: block; }
+  .hwrap { max-width: 1240px; margin: 0 auto; padding: 18px 22px 60px; }
+  .hwrap h3 { font-size: 15px; margin: 26px 0 8px; font-weight: 600; }
+  .hwrap h3:first-child { margin-top: 4px; }
+  .hwrap .muted { color: var(--dim); }
+  .hbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: var(--panel); color: var(--dim); padding: 3px 10px; }
+  .seg button.on { background: #2a3550; color: var(--text); }
+  .chartbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .chartbox svg { display: block; width: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--dim); margin: 6px 4px 0; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .smalls { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 10px; }
+  .smalls .chartbox .lbl { font-size: 12px; color: var(--dim); margin: 0 0 4px 2px; }
+  table.ht { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  table.ht th { text-align: left; color: var(--dim); font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .5px; padding: 7px 8px; background: var(--panel2); position: sticky; top: 0; }
+  table.ht td { padding: 5px 8px; border-top: 1px solid #1f2635; white-space: nowrap; }
+  table.ht tr.clk { cursor: pointer; }
+  table.ht tr.clk:hover td { background: #1c2333; }
+  table.ht tr.runhead td { background: #121722; color: var(--dim); font-size: 11.5px; }
+  table.ht td.c { text-align: center; }
+  table.ht small { color: var(--dim); }
+  .play { color: var(--accent); font-weight: 700; }
+  .ax { fill: #6b7489; font-size: 10.5px; }
+  .pt { cursor: default; }
+  .pt.rp { cursor: pointer; }
 </style>
 </head>
 <body>
 <header>
   <h1>CTF replay</h1>
+  <a class="home" href="../index.html" title="Project front page">⌂ home</a>
+  <div id="tabs"><button id="tabReplay" class="on">Replay</button><button id="tabHistory">Model history</button></div>
   <button id="open" title="Open replay JSON (or drag &amp; drop)">Open…</button>
   <input id="file" type="file" accept=".json,application/json">
   <span class="meta" id="meta">no replay loaded</span>
@@ -99,6 +170,7 @@
   <div id="score"></div>
 </header>
 <main>
+  <nav id="gallery"></nav>
   <div id="stage">
     <canvas id="view"></canvas>
     <div id="tooltip"></div>
@@ -149,7 +221,9 @@
     <span class="kbd">space play · ←/→ step · shift ±1 s · [ ] speed · click sphere to select</span>
   </div>
 </footer>
+<section id="history"><div class="hwrap" id="historyBody"></div></section>
 <!--REPLAY_DATA-->
+<script src="gallery/data/gallery.js" onerror="void 0"></script>
 <script>
 "use strict";
 
@@ -872,6 +946,7 @@ function App() {
 
   window.addEventListener("keydown", ev => {
     if (!st.R || ev.target.tagName === "SELECT" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (document.body.classList.contains("mode-history")) return;
     const big = Math.max(1, Math.round(st.R.tickRate / (st.R.meta.every || 1)));
     if (ev.key === " ") { setPlaying(!st.playing); }
     else if (ev.key === "ArrowRight") step(ev.shiftKey ? big : 1);
@@ -888,12 +963,281 @@ function App() {
   window.addEventListener("error", ev => showError(ev.error || ev.message));
 
   resize();
+  st.api = { load, showError, resize, setPlaying };
   const embedded = document.getElementById("replay-data");
   if (embedded) {
     try { load(JSON.parse(embedded.textContent), "embedded"); } catch (e) { showError(e); }
   }
+  if (window.GALLERY) {
+    try { st.gallery = Gallery(window.GALLERY, st, !embedded); } catch (e) { showError(e); }
+  }
   requestAnimationFrame(loop);
   return st;
+}
+
+// ------------------------------------------------------------- gallery
+// Data comes from docs/gallery/data/gallery.js (tools/gallery.py); each replay is a
+// separate <script> that sets window.REPLAYS[id], so it all works over file://.
+const RUN_COLORS = ["#8a93a6", "#c08cff", "#4fa3ff", "#5fd3c8", "#e5b454", "#ff8f5f", "#5fd38a", "#ff7fb0", "#b7d35f"];
+const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+const sgn = v => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function heat(w) {
+  if (w == null) return "transparent";
+  const t = Math.max(0, Math.min(1, w));
+  const a = [255, 95, 95], b = [229, 180, 84], c = [95, 211, 138];
+  const [p, q, u] = t < 0.5 ? [a, b, t * 2] : [b, c, (t - 0.5) * 2];
+  return "rgba(" + p.map((v, i) => Math.round(v + (q[i] - v) * u)).join(",") + ",0.22)";
+}
+
+function lineChart(series, o) {
+  // series: [{color, pts: [{x, y, title, id, big}], dash}]; returns SVG markup
+  const W = o.width || 900, H = o.height || 260, L = 44, R = 12, T = 10, B = 26;
+  const xs = [], ys = [];
+  series.forEach(s => s.pts.forEach(p => { if (p.y != null) { xs.push(p.x); ys.push(p.y); } }));
+  (o.hlines || []).forEach(h => ys.push(h.y));
+  if (!xs.length) return '<div class="muted" style="padding:20px">no data</div>';
+  let x0 = Math.min(...xs), x1 = Math.max(...xs);
+  if (x1 - x0 < 1e-9) x1 = x0 + 1;
+  let y0 = o.ymin != null ? o.ymin : Math.min(...ys), y1 = o.ymax != null ? o.ymax : Math.max(...ys);
+  if (o.ymin == null) { const pad = (y1 - y0) * 0.08 || 0.5; y0 -= pad; y1 += pad; }
+  if (y1 - y0 < 1e-9) y1 = y0 + 1;
+  const X = x => L + (x - x0) / (x1 - x0) * (W - L - R), Y = y => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" style="height:' + H + 'px">';
+  for (let k = 0; k <= 4; k++) {
+    const v = y0 + (y1 - y0) * k / 4, y = Y(v);
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '" stroke="#1f2635"/>' +
+      '<text class="ax" x="' + (L - 6) + '" y="' + (y + 3) + '" text-anchor="end">' + (o.fmt ? o.fmt(v) : v.toFixed(2)) + '</text>';
+  }
+  for (let k = 0; k <= 5; k++) {
+    const v = x0 + (x1 - x0) * k / 5;
+    svg += '<text class="ax" x="' + X(v) + '" y="' + (H - 8) + '" text-anchor="' + (k === 0 ? "start" : k === 5 ? "end" : "middle") + '">' +
+      (o.xfmt ? o.xfmt(v) : v.toFixed(0)) + '</text>';
+  }
+  (o.hlines || []).forEach(h => {
+    svg += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(h.y) + '" y2="' + Y(h.y) + '" stroke="' + h.color +
+      '" stroke-dasharray="5 4" stroke-width="1.2"/><text class="ax" x="' + (W - R - 2) + '" y="' + (Y(h.y) - 4) +
+      '" text-anchor="end" style="fill:' + h.color + '">' + esc(h.label) + '</text>';
+  });
+  series.forEach(s => {
+    const pts = s.pts.filter(p => p.y != null);
+    if (pts.length > 1) svg += '<polyline fill="none" stroke="' + s.color + '" stroke-width="' + (s.width || 2) + '"' +
+      (s.dash ? ' stroke-dasharray="' + s.dash + '"' : "") + ' points="' + pts.map(p => X(p.x).toFixed(1) + "," + Y(p.y).toFixed(1)).join(" ") + '"/>';
+    if (s.dots) pts.forEach(p => {
+      svg += '<circle class="pt' + (p.id ? " rp" : "") + '"' + (p.id ? ' data-id="' + esc(p.id) + '"' : "") + ' cx="' + X(p.x).toFixed(1) +
+        '" cy="' + Y(p.y).toFixed(1) + '" r="' + (p.id ? 5.5 : 3.5) + '" fill="' + (p.id ? "#0d1016" : s.color) + '" stroke="' + s.color +
+        '" stroke-width="' + (p.id ? 2.5 : 1) + '"><title>' + esc(p.title || "") + '</title></circle>';
+    });
+  });
+  return svg + "</svg>";
+}
+
+function Gallery(G, st, autoload) {
+  const $ = id => document.getElementById(id);
+  const api = st.api;
+  document.body.classList.add("has-gallery");
+  api.resize();
+  const runs = G.runs || [], replays = G.replays || {};
+  const runColor = {};
+  runs.forEach((r, i) => { runColor[r.name] = RUN_COLORS[i % RUN_COLORS.length]; });
+  const byRun = {};
+  runs.forEach(r => { byRun[r.name] = r; });
+  const snapReplays = (run, u) => Object.values(replays).filter(r => r.run === run && r.update === u);
+  const evalOf = (run, u) => ((byRun[run] || {}).evals || []).find(e => e.u === u);
+  const cache = new Map();
+  const browse = { run: null, u: null };
+  let current = null;
+  const histOpts = { opp: (G.opponents || [])[0] || "relay", metric: "w" };
+
+  function resultChip(r) {
+    return '<span class="res ' + r.result + '">' + r.score_a + "–" + r.score_b + " " + r.result[0].toUpperCase() + "</span>";
+  }
+
+  function open(id) {
+    const info = replays[id];
+    if (!info) return api.showError("No replay '" + id + "' in the gallery.");
+    current = id;
+    browse.run = info.run; browse.u = info.update;
+    setMode("replay");
+    renderSide();
+    const name = info.run + " u" + info.update + " vs " + info.opponent;
+    if (history.replaceState && location.hash.indexOf("r=" + encodeURIComponent(id)) < 0)
+      history.replaceState(null, "", "#r=" + encodeURIComponent(id));
+    if (cache.has(id)) { api.load(cache.get(id), ""); return; }
+    $("meta").textContent = "loading " + name + " …";
+    const tag = document.createElement("script");
+    tag.src = "gallery/data/" + info.file;
+    tag.onload = () => {
+      const raw = window.REPLAYS && window.REPLAYS[id];
+      tag.remove();
+      if (!raw) return api.showError("Replay script loaded but did not define REPLAYS['" + id + "']");
+      delete window.REPLAYS[id];
+      cache.set(id, raw);
+      if (cache.size > 6) cache.delete(cache.keys().next().value);
+      if (current === id) { try { api.load(raw, ""); } catch (e) { api.showError(e); } }
+    };
+    tag.onerror = () => { tag.remove(); api.showError("Could not load " + tag.src + "\nRegenerate with: python tools/gallery.py"); };
+    document.head.appendChild(tag);
+  }
+
+  // ---- left sidebar
+  function renderSide() {
+    const L = G.latest, nav = $("gallery");
+    let h = "";
+    if (L && byRun[L.run]) {
+      const run = byRun[L.run], ev = run.evals.length ? run.evals[run.evals.length - 1] : null;
+      h += '<h2>Latest model</h2><div class="card"><div class="big" style="color:' + runColor[L.run] + '">' + esc(L.run) +
+        ' · u' + L.update + '</div><div class="sub">' + (run.state ? esc(run.state) + " · " : "") +
+        (run.last.samples ? (run.last.samples / 1e6).toFixed(0) + "M samples" : "") + '</div>';
+      if (ev) h += '<div class="sub" style="margin-top:6px">held-out @ u' + ev.u + ' (win%)</div><div class="chips">' +
+        (G.opponents || []).filter(o => ev.vs[o]).map(o => '<span class="chip" style="background:' + heat(ev.vs[o].w) + '">' +
+          esc(o) + " " + pct(ev.vs[o].w) + "</span>").join("") + "</div>";
+      h += '</div><div class="glist">' + L.replays.map(id => {
+        const r = replays[id];
+        return '<div class="gitem' + (id === current ? " on" : "") + '" data-id="' + esc(id) + '"><span class="t">vs ' + esc(r.opponent) +
+          "</span>" + resultChip(r) + "</div>";
+      }).join("") + "</div>";
+    }
+    if ((G.milestones || []).length) {
+      h += '<h2>Progress vs ' + esc(replays[G.milestones[0]].opponent) + ' · seed ' + replays[G.milestones[0]].seed + '</h2><div class="glist">' +
+        G.milestones.map(id => {
+          const r = replays[id], ev = evalOf(r.run, r.update), v = ev && ev.vs[r.opponent];
+          return '<div class="gitem' + (id === current ? " on" : "") + '" data-id="' + esc(id) + '"><span class="t"><span style="color:' +
+            runColor[r.run] + '">●</span> ' + esc(r.run) + " u" + r.update + "</span>" + resultChip(r) +
+            (v ? '<span class="s">held-out vs ' + esc(r.opponent) + " " + pct(v.w) + " · GD " + sgn(v.gd) + "</span>" : "") + "</div>";
+        }).join("") + "</div>";
+    }
+    // browse any run / snapshot
+    if (!browse.run) {
+      const cur = current && replays[current];
+      browse.run = cur ? cur.run : (L ? L.run : (runs[runs.length - 1] || {}).name);
+      browse.u = cur ? cur.update : (L ? L.update : null);
+    }
+    const run = byRun[browse.run] || runs[0];
+    if (run) {
+      const snaps = Array.from(new Set(run.evals.map(e => e.u).concat(Object.values(replays).filter(r => r.run === run.name).map(r => r.update))))
+        .sort((a, b) => b - a);
+      if (snaps.indexOf(browse.u) < 0) browse.u = snaps[0];
+      h += '<h2>Browse</h2><div class="gform"><label>run</label><select id="gRun">' +
+        runs.map(r => '<option' + (r.name === run.name ? " selected" : "") + '>' + esc(r.name) + "</option>").join("") +
+        '</select><label>snapshot</label><select id="gSnap">' + snaps.map(u => '<option value="' + u + '"' + (u === browse.u ? " selected" : "") +
+          ">u" + u + (snapReplays(run.name, u).length ? "  ▶" : "") + (evalOf(run.name, u) ? "" : "  (not evaluated)") + "</option>").join("") +
+        "</select></div>";
+      if (run.description) h += '<div class="hint">' + esc(run.description) + "</div>";
+      const rs = snapReplays(run.name, browse.u);
+      h += rs.length ? '<div class="glist">' + rs.map(r => '<div class="gitem' + (r.id === current ? " on" : "") + '" data-id="' + esc(r.id) +
+        '"><span class="t">▶ vs ' + esc(r.opponent) + ' <small style="color:var(--dim)">seed ' + r.seed + "</small></span>" + resultChip(r) + "</div>").join("") + "</div>"
+        : '<div class="hint">No replay recorded for this snapshot. Record one with<br><code>python tools/gallery.py --run ' + esc(run.name) +
+          " --snapshot " + browse.u + " --latest-only</code></div>";
+      const ev = evalOf(run.name, browse.u);
+      if (ev) h += '<div class="card" style="margin-top:6px"><div class="sub">held-out gauntlet · u' + ev.u + '</div><table class="mini">' +
+        (G.opponents || []).filter(o => ev.vs[o]).map(o => '<tr><td>' + esc(o) + '</td><td class="n" style="background:' + heat(ev.vs[o].w) + '">' +
+          pct(ev.vs[o].w) + '</td><td class="n">GD ' + sgn(ev.vs[o].gd) + '</td></tr>').join("") + "</table></div>";
+    }
+    h += '<div class="hint" style="margin-top:10px">Data generated ' + esc(G.generated) + '. Refresh: <code>python tools/gallery.py</code></div>';
+    nav.innerHTML = h;
+    nav.querySelectorAll(".gitem").forEach(el => el.addEventListener("click", () => open(el.dataset.id)));
+    const gr = $("gRun"), gs = $("gSnap");
+    if (gr) gr.addEventListener("change", () => { browse.run = gr.value; browse.u = null; renderSide(); });
+    if (gs) gs.addEventListener("change", () => {
+      browse.u = +gs.value; renderSide();
+      const rs = snapReplays(browse.run, browse.u);
+      if (rs.length) open((rs.find(r => r.opponent === (replays[current] || {}).opponent) || rs[0]).id);
+    });
+  }
+
+  // ---- model history tab
+  function renderHistory() {
+    const opps = G.opponents || [], opp = histOpts.opp, metric = histOpts.metric;
+    const M = x => (x / 1e6).toFixed(0) + "M";
+    let h = '<h3>Held-out win rate over training</h3><div class="hbar"><span class="muted">opponent</span><span class="seg" id="hOpp">' +
+      opps.map(o => '<button data-o="' + esc(o) + '"' + (o === opp ? ' class="on"' : "") + ">" + esc(o) + "</button>").join("") +
+      '</span><span class="seg" id="hMetric"><button data-m="w"' + (metric === "w" ? ' class="on"' : "") + '>win rate</button><button data-m="gd"' +
+      (metric === "gd" ? ' class="on"' : "") + '>goal diff</button></span><span class="muted">x: training samples · filled rings have a replay (click)</span></div>';
+    const series = runs.map(r => ({
+      color: runColor[r.name], dots: true,
+      pts: r.evals.filter(e => e.s != null && e.vs[opp]).map(e => {
+        const v = e.vs[opp], rp = snapReplays(r.name, e.u).find(x => x.opponent === opp);
+        return { x: e.s, y: metric === "w" ? v.w : v.gd, id: rp ? rp.id : null,
+          title: r.name + " u" + e.u + " vs " + opp + ": " + pct(v.w) + " [" + pct(v.lo) + ", " + pct(v.hi) + "] · GD " + sgn(v.gd) + " · n " + v.n };
+      }),
+    }));
+    const rel = G.release && (G.release.rows || []).find(x => x.opponent === opp);
+    const hl = rel ? [{ y: metric === "w" ? rel.w : rel.gd, color: "#e5b454", label: "release " + G.release.run + " u" + G.release.update }] : [];
+    h += '<div class="chartbox" id="hChart">' + lineChart(series, { height: 300, ymin: metric === "w" ? 0 : null, ymax: metric === "w" ? 1 : null,
+      fmt: metric === "w" ? v => Math.round(v * 100) + "%" : v => v.toFixed(1), xfmt: M, hlines: hl }) +
+      '<div class="legend">' + runs.filter(r => r.evals.length).map(r => '<span title="' + esc(r.description || r.name) + '"><i style="background:' +
+        runColor[r.name] + '"></i>' + esc(r.name) + "</span>").join("") +
+      (rel ? '<span><i style="background:#e5b454"></i>released model (gauntlet)</span>' : "") + "</div></div>";
+
+    // snapshot table
+    h += '<h3>Every evaluated snapshot</h3><p class="muted" style="margin:-4px 0 8px">Held-out gauntlet, win rate and goal difference per opponent. ' +
+      'Rows with ▶ have recorded replays — click to watch.</p><table class="ht"><tr><th>run</th><th>snapshot</th><th>samples</th>' +
+      opps.map(o => "<th>" + esc(o) + "</th>").join("") + "<th>replays</th></tr>";
+    runs.slice().reverse().forEach(r => {
+      const us = Array.from(new Set(r.evals.map(e => e.u).concat(Object.values(replays).filter(x => x.run === r.name).map(x => x.update)))).sort((a, b) => b - a);
+      if (!us.length) return;
+      h += '<tr class="runhead"><td colspan="' + (opps.length + 4) + '"><b style="color:' + runColor[r.name] + '">' + esc(r.name) + "</b> " +
+        (r.state ? "· " + esc(r.state) + " " : "") + (r.description ? "· " + esc(r.description) : "") + "</td></tr>";
+      us.forEach(u => {
+        const e = evalOf(r.name, u), rs = snapReplays(r.name, u);
+        h += "<tr" + (rs.length ? ' class="clk" data-id="' + esc((rs.find(x => x.opponent === opp) || rs[0]).id) + '"' : "") + "><td>" + esc(r.name) +
+          "</td><td>u" + u + "</td><td>" + (e && e.s ? M(e.s) : "") + "</td>" + opps.map(o => {
+            const v = e && e.vs[o];
+            return v ? '<td style="background:' + heat(v.w) + '">' + pct(v.w) + " <small>" + sgn(v.gd) + "</small></td>" : "<td></td>";
+          }).join("") + "<td>" + rs.map(x => '<a href="#" class="play" data-id="' + esc(x.id) + '">▶ ' + esc(x.opponent) + "</a>").join(" ") + "</td></tr>";
+      });
+    });
+    h += "</table>";
+
+    // training curves
+    const curves = [["win", "train win rate (mixed opponents)", v => Math.round(v * 100) + "%"], ["gf", "goals for / match"],
+      ["ga", "goals against / match"], ["wall", "wall deaths / player / match"]];
+    h += '<h3>Training curves</h3><div class="smalls">' + curves.map(([k, label, fmt]) => '<div class="chartbox"><div class="lbl">' + label + "</div>" +
+      lineChart(runs.filter(r => r.curve).map(r => ({ color: runColor[r.name], width: 1.6,
+        pts: r.curve.s.map((s, i) => ({ x: s, y: r.curve[k][i] })) })), { height: 170, width: 420, xfmt: M, fmt: fmt || (v => v.toFixed(1)) }) +
+      "</div>").join("") + "</div>";
+
+    // released submission
+    const R = G.release;
+    if (R) {
+      h += '<h3>Released submission · ' + esc(R.name) + " (" + esc(R.run) + " u" + R.update + ")</h3><p class=\"muted\" style=\"margin:-4px 0 8px\">" +
+        esc((R.date || "").slice(0, 16).replace("T", " ")) + " · status " + esc(R.status) + " · seeds " + esc(R.seeds) + " · mean win " + pct(R.mean_w) +
+        " · " + R.model_kib + " KiB model</p><table class=\"ht\"><tr><th>opponent</th><th>n</th><th>W-D-L</th><th>win rate [95% CI]</th><th>goal diff</th><th>GF / GA</th><th>wall/pl</th></tr>" +
+        R.rows.map(x => "<tr><td>" + esc(x.opponent) + "</td><td>" + x.n + "</td><td>" + x.wins + "-" + x.draws + "-" + x.losses + '</td><td style="background:' +
+          heat(x.w) + '">' + pct(x.w) + " <small>[" + pct(x.ci && x.ci[0]) + ", " + pct(x.ci && x.ci[1]) + "]</small></td><td>" + sgn(x.gd) + "</td><td>" +
+          x.gf.toFixed(1) + " / " + x.ga.toFixed(1) + "</td><td>" + (x.wall != null ? x.wall.toFixed(2) : "") + "</td></tr>").join("") + "</table>";
+    }
+    $("historyBody").innerHTML = h;
+    const body = $("historyBody");
+    body.querySelectorAll("#hOpp button").forEach(b => b.addEventListener("click", () => { histOpts.opp = b.dataset.o; renderHistory(); }));
+    body.querySelectorAll("#hMetric button").forEach(b => b.addEventListener("click", () => { histOpts.metric = b.dataset.m; renderHistory(); }));
+    body.querySelectorAll("[data-id]").forEach(el => el.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); open(el.dataset.id); }));
+  }
+
+  let histBuilt = false;
+  function setMode(mode) {
+    document.body.classList.toggle("mode-history", mode === "history");
+    $("tabReplay").classList.toggle("on", mode !== "history");
+    $("tabHistory").classList.toggle("on", mode === "history");
+    if (mode === "history") { api.setPlaying(false); if (!histBuilt) { renderHistory(); histBuilt = true; } }
+    else api.resize();
+  }
+  const m = /r=([^&]+)/.exec(location.hash || "");
+  const want = m && decodeURIComponent(m[1]);
+  const L = G.latest;
+  const first = want && replays[want] ? want :
+    L && L.replays.length ? (L.replays.find(id => replays[id].opponent === "relay") || L.replays[0]) : Object.keys(replays)[0];
+  $("tabReplay").addEventListener("click", () => { if (!st.R && !current && first) open(first); else setMode("replay"); });
+  $("tabHistory").addEventListener("click", () => setMode("history"));
+
+  renderSide();
+  if (autoload) {
+    if (/history/.test(location.hash) || !first) setMode("history");
+    else open(first);
+  }
+  return { open, setMode };
 }
 
 if (typeof module === "object" && module.exports) {

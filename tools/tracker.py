@@ -148,7 +148,7 @@ th,td{{padding:8px 11px;border-bottom:1px solid #2a3644;text-align:left;vertical
 .box{{background:#18273a;border:1px solid #2d4560;border-radius:10px;padding:12px 18px}} li{{margin:5px 0}}
 </style></head><body><main>
 <h1>ExML Capture the Flag — progress tracker</h1>
-<div class='muted'>Last updated {time.strftime('%Y-%m-%d %H:%M')} · branch <code>main</code></div>
+<div class='muted'>Last updated {time.strftime('%Y-%m-%d %H:%M')} · branch <code>main</code> · <a style='color:#5fb3f9' href='viewer.html'>model gallery &amp; replays</a> · <a style='color:#5fb3f9' href='../index.html'>home</a></div>
 <h2>Where we are</h2><div class='box'>{status['summary']}</div>
 <h2>Milestones</h2><table><tr><th>#</th><th>Milestone</th><th>State</th><th>Notes</th></tr>{milestones}</table>
 <h2>Evaluation (held-out seeds, both sides)</h2>

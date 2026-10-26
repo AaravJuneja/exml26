@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExML CTF — RL project</title>
+<style>
+  :root { --bg: #0d1016; --panel: #151a23; --panel2: #1b2130; --line: #262e3f; --text: #d7dce6;
+    --dim: #8a93a6; --faint: #5a6378; --accent: #e5b454; --link: #7fb8ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14.5px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 34px 24px 70px; }
+  h1 { margin: 0; font-size: 27px; letter-spacing: .2px; }
+  h1 span { color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--dim);
+    margin: 34px 0 12px; font-weight: 600; }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .muted { color: var(--dim); }
+  code { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12.5px; }
+  .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .link { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+    color: var(--text); transition: border-color .15s, transform .15s; }
+  .link:hover { border-color: #3d4a68; text-decoration: none; transform: translateY(-1px); }
+  .link b { display: block; font-size: 15.5px; margin-bottom: 3px; }
+  .link span { color: var(--dim); font-size: 13px; }
+  .link.main { background: linear-gradient(135deg, #1d2536, #161b26); border-color: #3a4560; }
+  .link.main b { color: var(--accent); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .stat .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .k { color: var(--dim); font-size: 12.5px; }
+  .stat .s { color: var(--faint); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line);
+    font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 11px; border-bottom: 1px solid #1f2635; text-align: left; }
+  th { background: var(--panel2); color: var(--dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: .5px; }
+  td small { color: var(--dim); }
+  .pill { display: inline-block; padding: 0 9px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .ok { color: #7be0a0; border-color: #2f6b49; } .bad { color: #ff9aa2; border-color: #6b302d; }
+  .note { background: #1c1a12; border: 1px solid #4a4020; color: #e9dcae; border-radius: 10px; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ExML <span>Capture the Flag</span> — RL project</h1>
+  <div class="muted" id="sub">Reinforcement-learning agents for the ExML 2026 CTF arena.</div>
+
+  <h2>Open</h2>
+  <div class="links">
+    <a class="link main" href="docs/viewer.html"><b>▶ Model gallery &amp; replays</b><span>Watch the latest model play relay, balanced, baseline and guardian; browse older snapshots.</span></a>
+    <a class="link" href="docs/viewer.html#history"><b>Model history</b><span>Held-out win rate over training for every run and opponent.</span></a>
+    <a class="link" href="docs/tracker.html"><b>Progress tracker</b><span>Milestones, running jobs, training curves.</span></a>
+    <a class="link" href="docs/TRACKER.md"><b>Detailed log</b><span>docs/TRACKER.md, the running engineering log.</span></a>
+    <a class="link" href="docs/reviews/"><b>Reviews</b><span>docs/reviews/, review notes and audits.</span></a>
+    <a class="link" href="docs/RELEASE.md"><b>Release notes</b><span>docs/RELEASE.md, how the submission is built and checked.</span></a>
+    <a class="link" href="#release"><b>Release report</b><span>Gauntlet and latency of the submitted model (below).</span></a>
+  </div>
+
+  <div id="data"></div>
+</main>
+<script src="docs/gallery/data/gallery.js"></script>
+<script>
+"use strict";
+(function () {
+  const G = window.GALLERY, box = document.getElementById("data");
+  const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+  const sgn = v => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const when = ts => ts ? new Date(ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "–";
+  if (!G) {
+    box.innerHTML = '<h2>Numbers</h2><div class="note">No gallery data yet. Generate it with <code>python tools/gallery.py</code> ' +
+      "(writes <code>docs/gallery/data/</code>), then reload this page.</div>";
+    return;
+  }
+  const H = G.headline || {}, opps = (G.opponents || []).filter(o => H.best && H.best[o] && o !== "idle");
+  document.getElementById("sub").innerHTML = "Latest training data " + esc(when(H.updated)) + " · gallery built " + esc(G.generated) +
+    " · refresh with <code>python tools/gallery.py</code>";
+  let h = "";
+  const L = G.latest, LE = H.latest_eval;
+  if (L) {
+    h += "<h2>Latest model · " + esc(L.run) + " u" + L.update + (LE ? " · held-out at u" + LE.u : "") + "</h2><div class=\"stats\">" +
+      opps.filter(o => LE && LE.vs[o]).map(o => '<div class="stat"><div class="k">vs ' + esc(o) + '</div><div class="v">' + pct(LE.vs[o].w) +
+        '</div><div class="s">GD ' + sgn(LE.vs[o].gd) + " · n " + LE.vs[o].n + "</div></div>").join("") + "</div>";
+  }
+  h += "<h2>Best held-out win rate so far (any run, any snapshot)</h2><div class=\"stats\">" +
+    opps.map(o => { const b = H.best[o]; return '<div class="stat"><div class="k">vs ' + esc(o) + '</div><div class="v">' + pct(b.w) +
+      '</div><div class="s">' + esc(b.run) + " u" + b.u + " · GD " + sgn(b.gd) + "</div></div>"; }).join("") + "</div>";
+  const R = G.release;
+  if (R) {
+    const ok = v => '<span class="pill ' + (v ? "ok" : "bad") + '">' + (v ? "pass" : "fail") + "</span>";
+    h += '<h2 id="release">Released submission · ' + esc(R.name) + "</h2><p class=\"muted\">Policy " + esc(R.run) + " u" + R.update + " (" +
+      (R.samples / 1e6).toFixed(0) + "M samples, " + esc(R.arch) + ", features v" + esc(R.feature_version) + ", " + R.model_kib + " KiB, sha " +
+      esc(R.sha) + ") · " + esc((R.date || "").slice(0, 16).replace("T", " ")) + " UTC · overall " + ok(R.status === "PASS") +
+      " · checks: " + Object.entries(R.checks || {}).map(([k, v]) => esc(k) + " " + ok(v)).join(" ") + "</p>";
+    h += "<table><tr><th>opponent</th><th>W-D-L</th><th>win rate [95% CI]</th><th>goal diff</th><th>goals for / against</th><th>decide p99</th></tr>" +
+      R.rows.map(x => "<tr><td>" + esc(x.opponent) + "</td><td>" + x.wins + "-" + x.draws + "-" + x.losses + "</td><td><b>" + pct(x.w) + "</b> <small>[" +
+        pct(x.ci && x.ci[0]) + ", " + pct(x.ci && x.ci[1]) + "]</small></td><td>" + sgn(x.gd) + "</td><td>" + x.gf.toFixed(1) + " / " + x.ga.toFixed(1) +
+        "</td><td>" + (x.p99 != null ? x.p99.toFixed(1) + " ms" : "") + "</td></tr>").join("") +
+      '<tr><td colspan="6" class="muted">' + (R.total ? R.total.n + " games, seeds " + esc(R.seeds) + ", both sides · mean win rate " + pct(R.mean_w) : "") + "</td></tr></table>";
+    if ((R.latency || []).length) {
+      h += "<p class=\"muted\" style=\"margin-top:16px\">Latency (engine callback, full matches)</p><table><tr><th>background load</th><th>callbacks</th>" +
+        "<th>p50</th><th>p99</th><th>max</th><th>&gt;10 ms</th><th>model decide p99</th><th>timeouts</th><th>verdict</th></tr>" +
+        R.latency.map(x => "<tr><td>" + (x.stress ? x.stress + " stress procs" : "idle") + "</td><td>" + x.n + "</td><td>" + x.cb_p50.toFixed(2) +
+          " ms</td><td>" + x.cb_p99.toFixed(1) + " ms</td><td>" + x.cb_max.toFixed(0) + " ms</td><td>" + x.over10 + "</td><td>" + x.dec_p99.toFixed(2) +
+          " ms</td><td>" + x.timeouts + "</td><td>" + ok(x.pass) + "</td></tr>").join("") + "</table>";
+    }
+  }
+  box.innerHTML = h;
+})();
+</script>
+</body>
+</html>
