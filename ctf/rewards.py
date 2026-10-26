@@ -76,7 +76,7 @@ class RewardTracker:
             else:
                 route = math.hypot(x - flag.x, y - flag.y) + math.hypot(flag.x - hx, flag.y - hy)
             phi = scale * (route - offset)
-            if defending:
+            if defending and sphere.carrying_flag is None:  # our carrier keeps running home
                 phi -= defense * math.hypot(x - own_flag.x, y - own_flag.y) / 180.0
             out.append(phi)
         return out
