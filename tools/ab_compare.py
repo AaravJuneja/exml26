@@ -31,12 +31,16 @@ def main():
     p.add_argument("--seeds", default="3000-3063")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--out", default="")
+    p.add_argument("--a-decode", choices=("greedy", "sample"), default="greedy")
+    p.add_argument("--b-decode", choices=("greedy", "sample"), default="greedy")
     args = p.parse_args()
     seeds = parse_seeds(args.seeds)
-    def spec(path):  # .npz policies decode greedily; exported model.py files are played as-is
-        return path + "@greedy" if path.endswith(".npz") else path
+    def spec(path, decode):  # .npz policies: greedy or seeded sampling; model.py files as-is
+        if not path.endswith(".npz"):
+            return path
+        return path + ("@greedy" if decode == "greedy" else "@sample,seed=1")
 
-    a_spec, b_spec = spec(args.a), spec(args.b)
+    a_spec, b_spec = spec(args.a, args.a_decode), spec(args.b, args.b_decode)
 
     rows, report = [], {"a": args.a, "b": args.b, "seeds": args.seeds, "opponents": {}}
     for opponent in args.opponents:
