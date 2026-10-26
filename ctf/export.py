@@ -33,14 +33,21 @@ decode: {decode}
 """
 
 import os
+import sys as _mx_sys
 
-for _mx_var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
-                "VECLIB_MAXIMUM_THREADS"):
-    os.environ.setdefault(_mx_var, "1")
+# Force single-threaded BLAS, overriding inherited values: every matmul here is
+# one row times a small matrix, so threads only add wake-up latency, and with
+# one worker process per sphere (six at once) an inherited OMP_NUM_THREADS=8
+# would oversubscribe the CPUs and risk the 30 ms deadline. BLAS reads these
+# only when numpy is first imported, so if numpy is already loaded they cannot
+# help and are left untouched rather than leaking into the host's environment.
+if "numpy" not in _mx_sys.modules:
+    for _mx_var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                    "VECLIB_MAXIMUM_THREADS"):
+        os.environ[_mx_var] = "1"
 
 import base64 as _mx_base64
 import math as _mx_math
-import sys as _mx_sys
 import zlib as _mx_zlib
 
 import numpy as _mx_np
@@ -114,6 +121,8 @@ def _mx_forward(row):
 
 
 def _mx_sample(head):
+    # Inverse-CDF draw: same softmax distribution as NumpyActor's Gumbel-max,
+    # but a different random stream, so sampled games are not bit-identical.
     shifted = head - head.max()
     cdf = _mx_np.cumsum(_mx_np.exp(shifted))
     index = int(_mx_np.searchsorted(cdf, _mx_rng.random() * cdf[-1], side="right"))
@@ -131,6 +140,7 @@ def _mx_choose(observation):
             _mx_rng = _mx_np.random.default_rng(abs(seed))
         t, r, j = _mx_sample(throttle), _mx_sample(turn), _mx_sample(jump)
     else:
+        # Exact ties go to the lowest index (numpy argmax), as in NumpyActor.
         t, r, j = int(throttle.argmax()), int(turn.argmax()), int(jump.argmax())
     _MEMORY.set_action(t, r, j)
     return THROTTLE_VALUES[t], TURN_VALUES[r], bool(j)

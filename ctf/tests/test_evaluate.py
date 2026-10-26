@@ -1,6 +1,8 @@
 """Tests for the evaluation harness (short matches; full-length runs live on the training machine)."""
 
 import json
+import multiprocessing
+import os
 
 import numpy as np
 import pytest
@@ -42,6 +44,12 @@ def test_parse_spec(policy_path):
     wiggle = E.parse_spec(WIGGLE)
     assert wiggle.documented_only and wiggle.label == "tests/wiggle_policy"
     assert E.parse_spec(WIGGLE + "@full").documented_only is False
+    proc = E.parse_spec(WIGGLE + "@proc")
+    assert proc.process and proc.documented_only and proc.label == "tests/wiggle_policy@proc"
+    assert E.parse_spec(str(proc)) == proc and not wiggle.process
+    assert E.parse_spec("baseline@proc").label == "baseline@proc"
+    with pytest.raises(ValueError):
+        E.parse_spec(policy_path + "@proc")
     npz = E.parse_spec(policy_path)
     assert npz.kind == "npz" and npz.greedy and npz.documented_only
     sampled = E.parse_spec(policy_path + "@sample,seed=7")
@@ -129,6 +137,33 @@ def test_policy_sees_documented_keys_and_sets_memory(policy_path, monkeypatch):
     assert seen and all(keys == set(DOCUMENTED_KEYS) for keys in seen)
 
 
+def test_process_isolated_players(tmp_path):
+    # @proc (one rpc worker process per player) plays the same game as in-process modules,
+    # also from inside the evaluator's process pool, and cleans its workers up.
+    jobs = [(spec, "baseline", 9, "blue", 80) for spec in (WIGGLE, WIGGLE + "@proc")]
+    plain, proc = sorted((E.deterministic_view(r) for r in E.run_jobs(jobs, workers=2)),
+                         key=lambda r: r["spec_a"].endswith("proc"))
+    assert proc["spec_a"].endswith("proc")
+    plain.pop("spec_a"), proc.pop("spec_a")
+    assert plain == proc
+    probe = tmp_path / "probe_model.py"
+    probe.write_text(
+        "import os\n"
+        "def decide(observation):\n"
+        "    with open(os.path.join(%r, str(os.getpid())), 'a') as f:\n"
+        "        f.write('%%s %%d\\n' %% (sorted(observation) == sorted(%r),"
+        " observation['self']['id']))\n"
+        "    return 1.0, 0.0, False\n" % (str(tmp_path / "seen"), list(E.DOCUMENTED_KEYS)))
+    (tmp_path / "seen").mkdir()
+    record = E.run_match(str(probe) + "@proc", "baseline", 2, "red", max_ticks=20)
+    assert record["a"]["errors"] == 0 and record["timing"]["decide_a"]["calls"] == 60
+    seen = {int(p.name): set(p.read_text().splitlines()) for p in (tmp_path / "seen").iterdir()}
+    assert len(seen) == 3 and os.getpid() not in seen  # one process per player
+    assert sorted(len(lines) for lines in seen.values()) == [1, 1, 1]  # one sphere each
+    assert all(line.startswith("True ") for lines in seen.values() for line in lines)
+    assert not multiprocessing.active_children()
+
+
 def test_scripted_doc_mode_strips_teammates(tmp_path):
     probe = tmp_path / "probe_model.py"
     probe.write_text(
@@ -202,13 +237,69 @@ def test_bootstrap_ratio_weights_by_games():
     assert 0.2 < p_positive < 0.3  # only the {1,1} resample (p = 1/4) is positive
 
 
+def _vs(records, spec_b="baseline@full", digest_b=None, max_ticks=6000):
+    return [{**r, "spec_b": spec_b, "digest_b": digest_b, "max_ticks": max_ticks}
+            for r in records]
+
+
 def test_compare_is_paired():
     x = [_record(s, side, 2, 1) for s in range(10) for side in ("red", "blue")]
     y = [_record(s, side, 1, 1) for s in range(10) for side in ("red", "blue")]
-    c = E.compare(x, y, n_boot=500)
+    c = E.compare(_vs(x), _vs(y), n_boot=500)
     assert c["n_pairs"] == 20 and c["n_seeds"] == 10
+    assert c["n_dropped_x"] == 0 and c["n_dropped_y"] == 0
     assert c["goal_diff_delta"] == 1.0 and c["goal_diff_delta_ci"] == [1.0, 1.0]
     assert c["match_points_delta"] == 1.0 and c["p_match_points_delta_positive"] == 1.0
+
+
+def test_compare_validates_record_sets():
+    x = _vs([_record(s, side, 2, 1) for s in range(4) for side in ("red", "blue")])
+    y = _vs([_record(s, side, 1, 1) for s in range(4) for side in ("red", "blue")])
+
+    def fails(xs, ys, match):
+        with pytest.raises(ValueError, match=match):
+            E.compare(xs, ys, n_boot=50)
+
+    fails(x, _vs(y, spec_b="example@full"), "different opponents")
+    fails(x, _vs(y, spec_b="/a/other/pol.npz@greedy"), "different opponents")
+    fails(x, y[:4] + _vs(y[4:], spec_b="idle"), "Y mixes opponents")
+    fails(x, _vs(y, max_ticks=3000), r"max_ticks")
+    fails(x[:1] + x, y, "X has duplicate")
+    fails(x, [], "empty")
+    fails(x[:1], y, "no seed has both sides")
+    # Same opponent file recorded on two machines: compared by directory/name + digest.
+    xs, ys = _vs(x, "/srv/runs/opp/pol.npz@greedy", "aa"), _vs(y, "/home/runs/opp/pol.npz@greedy")
+    assert E.compare(xs, ys, n_boot=50)["n_pairs"] == 8  # Y has no digest: not checked
+    fails(xs, _vs(y, "/home/runs/opp/pol.npz@greedy", "bb"), "opponent file differs")
+    fails(xs, _vs(y, "/home/runs/opp/pol.npz@sample,seed=0", "aa"), "different opponents")
+
+    # Incomplete seeds are dropped (seed 0 lacks blue in X, seed 3 lacks red in Y).
+    partial_x = [r for r in x if (r["seed"], r["a_side"]) != (0, "blue")]
+    partial_y = [r for r in y if (r["seed"], r["a_side"]) != (3, "red")]
+    with pytest.warns(UserWarning, match="dropped 3 X and 3 Y records from 2 incomplete"):
+        c = E.compare(partial_x, partial_y, n_boot=50)
+    assert (c["n_pairs"], c["n_seeds"], c["n_dropped_x"], c["n_dropped_y"]) == (4, 2, 3, 3)
+    with pytest.raises(ValueError, match="incomplete seeds"):
+        E.compare(partial_x, y, n_boot=50, strict=True)
+
+
+def test_policy_cache_reloads_overwritten_file(tmp_path):
+    from ctf.policy_io import load_policy, random_policy
+
+    path = tmp_path / "ckpt.npz"
+    random_policy(path, hidden=(16,), seed=1)
+    spec = E.parse_spec(str(path))
+    first, digest = E._loaded(spec)
+    assert E._loaded(spec)[0] is first and digest == E.file_digest(spec)
+    random_policy(path, hidden=(16,), seed=2)  # overwritten in place, same size
+    second, new_digest = E._loaded(spec)
+    assert new_digest != digest and new_digest == E.file_digest(spec)
+    expected, _ = load_policy(path)
+    assert np.array_equal(second.weights[0][0], expected.weights[0][0])
+    assert not np.array_equal(second.weights[0][0], first.weights[0][0])
+    assert sum(key[1] == spec.path for key in E._CACHE) == 1  # stale entry evicted
+    record = E.run_match(str(path), "idle", 1, max_ticks=5)
+    assert record["digest_a"] == new_digest and record["digest_b"] is None
 
 
 # -------------------------------------------------------------- end to end

@@ -17,10 +17,20 @@ Options follow an `@`, comma separated:
     @sample      sample actions; @seed=N sets the sampling seed (default 0)
     @doc         pass only the documented observation keys
     @full        also pass the backend's undocumented `teammates` field
+    @proc        `.py` only: run each player in its own spawned worker process
+                 through `rpc.worker.ModelWorker` (importlib load, as deployed)
 
 The provided scripted models read `teammates`, so they default to `@full`.
 Any other `model.py` defaults to `@doc` (it stands in for a submission), and a
 policy `.npz` always receives documented keys only.
+
+Without `@proc`, a `.py` spec still gets one fresh module instance per player
+(separate globals, so per-player memory as in deployment) inside the match
+process. `@proc` is the deployment-faithful check: a fresh interpreter per
+player, numpy imported by the model itself, and outputs normalized by the RPC
+worker. It uses a generous reply timeout instead of the 30 ms deadline so that
+results stay deterministic; exceptions inside a worker become idle actions and
+are not counted in `errors`, and decide times are parent-side round trips.
 
 CLI
 ---
@@ -33,12 +43,16 @@ CLI
 
 import argparse
 import hashlib
+import io
 import json
 import multiprocessing
 import os
 import sys
 import time
 import types
+import warnings
+import weakref
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -67,6 +81,7 @@ class PlayerSpec:
     greedy: bool = True       # npz only
     sample_seed: int = 0      # npz only, used when greedy is False
     documented_only: bool = True
+    process: bool = False     # scripted only: one worker process per player
 
     @property
     def label(self):
@@ -80,9 +95,14 @@ class PlayerSpec:
         if self.kind == "npz" and not self.greedy:
             base += f"@sample,seed={self.sample_seed}"
         elif self.kind == "scripted":
+            opts = []
             default_documented = not self.name
             if self.documented_only != default_documented:
-                base += "@doc" if self.documented_only else "@full"
+                opts.append("doc" if self.documented_only else "full")
+            if self.process:
+                opts.append("proc")
+            if opts:
+                base += "@" + ",".join(opts)
         return base
 
     def __str__(self):
@@ -92,7 +112,7 @@ class PlayerSpec:
         if self.kind == "npz":
             opts = "greedy" if self.greedy else f"sample,seed={self.sample_seed}"
         else:
-            opts = "doc" if self.documented_only else "full"
+            opts = ("doc" if self.documented_only else "full") + (",proc" if self.process else "")
         return f"{base}@{opts}"
 
 
@@ -139,6 +159,8 @@ def parse_spec(spec):
             result = replace(result, documented_only=True)
         elif key == "full" and result.kind == "scripted":
             result = replace(result, documented_only=False)
+        elif key == "proc" and result.kind == "scripted":
+            result = replace(result, process=True)
         elif result.kind == "idle" and key in ("doc", "full"):
             continue
         else:
@@ -146,11 +168,15 @@ def parse_spec(spec):
     return result
 
 
+def _digest(data):
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
 def file_digest(spec):
     spec = parse_spec(spec)
     if not spec.path:
         return None
-    return hashlib.sha256(Path(spec.path).read_bytes()).hexdigest()[:16]
+    return _digest(Path(spec.path).read_bytes())
 
 
 def parse_seeds(*items):
@@ -186,20 +212,28 @@ def _documented(observation):
 
 
 def _loaded(spec):
-    """Per-process cache of the expensive part of a spec (compiled code / actor)."""
-    key = str(spec)
+    """Per-process cache of a spec's compiled code / actor: returns (object, digest).
+
+    Keyed by the file's content digest (re-hashed on every call; files are
+    small), so a checkpoint or model overwritten in place is reloaded, and the
+    object always comes from the same bytes as the digest.
+    """
+    if spec.kind == "idle":
+        return None, None
+    data = Path(spec.path).read_bytes()
+    digest = _digest(data)
+    key = (spec.kind, spec.path, digest)
     if key not in _CACHE:
+        for stale in [k for k in _CACHE if k[:2] == key[:2]]:
+            del _CACHE[stale]
         if spec.kind == "scripted":
-            source = Path(spec.path).read_text()
-            _CACHE[key] = compile(source, spec.path, "exec")
-        elif spec.kind == "npz":
+            _CACHE[key] = compile(data, spec.path, "exec")
+        else:
             from ctf.policy_io import load_policy
 
-            actor, meta = load_policy(spec.path)
+            actor, meta = load_policy(io.BytesIO(data))
             _CACHE[key] = actor
-        else:
-            _CACHE[key] = None
-    return _CACHE[key]
+    return _CACHE[key], digest
 
 
 def _silent(*args, **kwargs):
@@ -207,6 +241,8 @@ def _silent(*args, **kwargs):
 
 
 class _IdleTeam:
+    digest = None
+
     def __init__(self):
         self.errors = 0
         self.times = []
@@ -214,12 +250,15 @@ class _IdleTeam:
     def act(self, observations):
         return {}
 
+    def close(self):
+        pass
+
 
 class _ScriptedTeam:
     """Three fresh module instances (module-level state is per player, per match)."""
 
     def __init__(self, spec, sphere_ids):
-        code = _loaded(spec)
+        code, self.digest = _loaded(spec)
         self.documented_only = spec.documented_only
         self.decide = {}
         for sid in sphere_ids:
@@ -249,12 +288,61 @@ class _ScriptedTeam:
             self.times.append(clock() - start)
         return actions
 
+    def close(self):
+        pass
+
+
+_PROC_TIMEOUT = 5.0  # seconds; far above the 30 ms deadline, so results stay deterministic
+
+
+def _close_workers(workers):
+    for worker in workers:
+        worker.close()
+
+
+class _ProcessTeam:
+    """One `rpc.worker.ModelWorker` process per player, loading the file as deployed."""
+
+    def __init__(self, spec, sphere_ids):
+        from rpc.worker import ModelWorker
+
+        _, self.digest = _loaded(spec)  # compile check + digest of the file
+        self.documented_only = spec.documented_only
+        self.workers = {sid: ModelWorker(None, spec.path, sid) for sid in sphere_ids}
+        self._finalizer = weakref.finalize(self, _close_workers, list(self.workers.values()))
+        for worker in self.workers.values():
+            if not worker.wait_ready():
+                self.close()
+                raise RuntimeError(f"model worker for {spec.path} did not start")
+        self.errors = 0
+        self.times = []
+
+    def act(self, observations):
+        actions = {}
+        clock = time.perf_counter
+        for sid, worker in self.workers.items():
+            observation = observations.get(sid)
+            if observation is None:
+                continue
+            if self.documented_only:
+                observation = _documented(observation)
+            process = worker._process
+            start = clock()
+            actions[sid] = worker.get_action(observation, _PROC_TIMEOUT)
+            self.times.append(clock() - start)
+            if worker._process is not process:  # timed out or died: respawned, idle action
+                self.errors += 1
+        return actions
+
+    def close(self):
+        self._finalizer()
+
 
 class _PolicyTeam:
     """Batched NumpyActor: one feature batch and one forward pass per tick."""
 
     def __init__(self, spec, sphere_ids, rng):
-        self.actor = _loaded(spec)
+        self.actor, self.digest = _loaded(spec)
         self.greedy = spec.greedy
         self.rng = rng
         self.ids = sorted(sphere_ids)
@@ -278,11 +366,16 @@ class _PolicyTeam:
         self.times.append(time.perf_counter() - start)
         return actions
 
+    def close(self):
+        pass
+
 
 def _make_team(spec, sphere_ids, seed, role):
     if spec.kind == "idle":
         return _IdleTeam()
     if spec.kind == "scripted":
+        if spec.process:
+            return _ProcessTeam(spec, sphere_ids)
         return _ScriptedTeam(spec, sphere_ids)
     rng = np.random.default_rng([spec.sample_seed, seed, role])
     return _PolicyTeam(spec, sphere_ids, rng)
@@ -313,12 +406,21 @@ def run_match(spec_a, spec_b, seed, a_side="red", max_ticks=DEFAULT_TICKS):
     need_full = any(s.kind == "scripted" and not s.documented_only for s in (spec_a, spec_b))
     match = Match(seed, team_names=SIDES, spheres_per_team=PLAYERS_PER_TEAM,
                   max_ticks=max_ticks, teammates_field=need_full)
+    controllers = {}
+    try:
+        for side, spec, role in ((a_side, spec_a, 0), (b_side, spec_b, 1)):
+            ids = [s.id for s in match.spheres if s.team == side]
+            controllers[side] = _make_team(spec, ids, seed, role)
+        return _play(match, controllers, spec_a, spec_b, seed, a_side, b_side, max_ticks,
+                     started)
+    finally:
+        for controller in controllers.values():
+            controller.close()
+
+
+def _play(match, controllers, spec_a, spec_b, seed, a_side, b_side, max_ticks, started):
     team_of = {s.id: s.team for s in match.spheres}
     role_of = {a_side: "a", b_side: "b"}
-    controllers = {}
-    for side, spec, role in ((a_side, spec_a, 0), (b_side, spec_b, 1)):
-        ids = [s.id for s in match.spheres if s.team == side]
-        controllers[side] = _make_team(spec, ids, seed, role)
     stats = {"a": _new_team_stats(), "b": _new_team_stats()}
     flags = match.flags
     score = match.score
@@ -366,6 +468,8 @@ def run_match(spec_a, spec_b, seed, a_side="red", max_ticks=DEFAULT_TICKS):
         "version": RECORD_VERSION,
         "spec_a": str(spec_a),
         "spec_b": str(spec_b),
+        "digest_a": controllers[a_side].digest,
+        "digest_b": controllers[b_side].digest,
         "seed": seed,
         "a_side": a_side,
         "b_side": b_side,
@@ -629,23 +733,81 @@ def summarize(records, n_boot=10000, boot_seed=0):
     return summary
 
 
-def compare(records_x, records_y, n_boot=10000, boot_seed=0):
+def _opponent_of(record):
+    """Machine-independent identity of B: (dir name, file name, options), digest."""
+    base, _, options = str(record.get("spec_b")).partition("@")
+    path = Path(base)
+    return (path.parent.name, path.name, options), record.get("digest_b")
+
+
+def _common(records, name, what, value):
+    """The single value of `value(record)` across `records`, else ValueError."""
+    values = {value(r) for r in records}
+    if len(values) != 1:
+        raise ValueError(f"{name} mixes {what}: {sorted(map(str, values))}")
+    return values.pop()
+
+
+def compare(records_x, records_y, n_boot=10000, boot_seed=0, strict=False):
     """Paired difference X - Y between two record sets on the same (seed, side) games.
 
     Typical use: challenger-vs-opponent records against incumbent-vs-opponent
-    records. Only games present in both sets are used; seeds are resampled as
-    units, so both sides and both candidates stay paired.
+    records. Both sets must face the same opponent (spec, and file digest when
+    recorded) with the same match settings, and (seed, side) must be unique in
+    each set; otherwise ValueError. Only complete seeds (both sides in both
+    sets) are used, so the per-seed side balance is identical for X and Y;
+    other records are dropped with a warning and counted in the result, or
+    raise ValueError if `strict`. Seeds are resampled as units.
     """
-    y_by_key = {(r["seed"], r["a_side"]): r for r in records_y}
-    pairs = [(r, y_by_key[(r["seed"], r["a_side"])]) for r in records_x
-             if (r["seed"], r["a_side"]) in y_by_key]
+    records_x, records_y = list(records_x), list(records_y)
+    by_key = []
+    for name, records in (("X", records_x), ("Y", records_y)):
+        if not records:
+            raise ValueError(f"record set {name} is empty")
+        keys = Counter((r["seed"], r["a_side"]) for r in records)
+        duplicates = sorted(k for k, n in keys.items() if n > 1)
+        if duplicates:
+            raise ValueError(f"record set {name} has duplicate (seed, side) games: "
+                             f"{duplicates[:5]}{' ...' if len(duplicates) > 5 else ''}")
+        by_key.append({(r["seed"], r["a_side"]): r for r in records})
+    opponents, digests, settings = [], [], []
+    for name, records in (("X", records_x), ("Y", records_y)):
+        opponents.append(_common(records, name, "opponents", lambda r: _opponent_of(r)[0]))
+        found = {_opponent_of(r)[1] for r in records} - {None}
+        if len(found) > 1:
+            raise ValueError(f"{name} mixes opponent file digests: {sorted(found)}")
+        digests.append(found.pop() if found else None)
+        settings.append(_common(records, name, "match settings",
+                                lambda r: (r.get("max_ticks"), r.get("players"))))
+    if opponents[0] != opponents[1]:
+        raise ValueError(f"different opponents: X {opponents[0]} vs Y {opponents[1]}")
+    if None not in digests and digests[0] != digests[1]:
+        raise ValueError(f"opponent file differs: X digest {digests[0]} vs Y {digests[1]}")
+    if settings[0] != settings[1]:
+        raise ValueError(f"different (max_ticks, players): X {settings[0]} vs Y {settings[1]}")
+
+    x_by_key, y_by_key = by_key
+    seeds = sorted({seed for seed, _ in x_by_key} | {seed for seed, _ in y_by_key})
+    complete = [s for s in seeds if all((s, side) in keys for keys in by_key for side in SIDES)]
+    dropped_x = len(x_by_key) - 2 * len(complete)
+    dropped_y = len(y_by_key) - 2 * len(complete)
+    if not complete:
+        raise ValueError("no seed has both sides in both record sets")
+    if dropped_x or dropped_y:
+        message = (f"compare: dropped {dropped_x} X and {dropped_y} Y records from "
+                   f"{len(seeds) - len(complete)} incomplete seeds")
+        if strict:
+            raise ValueError(message)
+        warnings.warn(message, stacklevel=2)
+    pairs = [(x_by_key[(s, side)], y_by_key[(s, side)]) for s in complete for side in SIDES]
     points = {"win": 1.0, "draw": 0.0, "loss": 0.0}
     merged = [{"seed": x["seed"],
                "gd": (x["score_a"] - x["score_b"]) - (y["score_a"] - y["score_b"]),
                "pts": points[x["result"]] - points[y["result"]]} for x, y in pairs]
     gd, gd_ci, gd_pos = paired_bootstrap(merged, lambda r: r["gd"], n_boot, boot_seed)
     pts, pts_ci, pts_pos = paired_bootstrap(merged, lambda r: r["pts"], n_boot, boot_seed)
-    return {"n_pairs": len(pairs), "n_seeds": len({m["seed"] for m in merged}),
+    return {"n_pairs": len(pairs), "n_seeds": len(complete),
+            "n_dropped_x": dropped_x, "n_dropped_y": dropped_y,
             "goal_diff_delta": gd, "goal_diff_delta_ci": gd_ci, "p_goal_diff_delta_positive": gd_pos,
             "match_points_delta": pts, "match_points_delta_ci": pts_ci,
             "p_match_points_delta_positive": pts_pos}
