@@ -90,6 +90,9 @@ Working log. The summary is `docs/tracker.html`.
 | b1 resumed at u~470 with a league mix (pool 12%, mirror 10%, stronger scripted share, no idle) | running |
 | **Paired A/B: release vs b1 u820** (128 games per opponent) | Sampled: relay **+0.89** [+0.05, +1.75], balanced **+1.15**, guardian **+1.41**, rusher **+0.84** (all CIs > 0). Greedy also positive but smaller → sampled decoding for plan B. |
 | **Release teams/exml_rl = b1 u960 (sampled)** | PASS. Held-out 640 games: **72% wins** (baseline/example/example2 100%, steady 95%, rusher 73%, chaos 72%, camper 66%, guardian 63%, relay 28%, balanced 25%); wall ~0.1 per player; latency p99 0.37 ms (training paused). Old pure-RL release kept as teams/exml_rl_pure (54%). |
+| b1 u1080 vs relay (held-out 64 games, sampled) | 27% (17-5-42), GD −1.75; ≈ u960. Relay progress flattening |
+| Compute split (27 Oct) | b1 5 workers; distillation run (d*) ≤3; breakthrough work (x*) ≤3 |
+| Breakthrough work | running: relay-loss diagnosis; team-aware (MAPPO) critic; targeted rewards/features; log in docs/reviews/breakthrough-log.md |
 | g1 generalist league (old space) | Flat after 112M samples (relay 17%, guardian 31%). Stopped. |
 | g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |
 | _(old note)_ Support potential Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |

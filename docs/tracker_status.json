@@ -201,6 +201,10 @@
   {
    "time": "2026-10-26 23:00",
    "text": "Released plan B as teams/exml_rl: 72% held-out (from 54%). Pure-RL release kept as teams/exml_rl_pure. Distillation to a pure network in progress."
+  },
+  {
+   "time": "2026-10-27 01:00",
+   "text": "Relay progress flattening (~28%). Launched breakthrough work (relay-loss diagnosis, team-aware critic, targeted rewards) alongside b1 and the distillation track."
   }
  ]
 }
