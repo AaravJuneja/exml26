@@ -1,12 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
-data/telemetry/*.jsonl
+.pytest_cache/
+.ruff_cache/
 .DS_Store
 *.uid
-*.uidbench/.policies/
-runs/
 data/
-__pycache__/
-.pytest_cache/
+runs/
 runs_cache/
+bench/.policies/
+docs/gallery/data/
