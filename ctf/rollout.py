@@ -19,7 +19,7 @@ import time
 import numpy as np
 
 from ctf import features as F
-from ctf.npnets import PolicyMemories, make_actor, memory_is_fresh
+from ctf.npnets import PolicyMemories, make_actor, memory_is_fresh, rows_to_float32
 from ctf.policies import ScriptedTeam
 from ctf.policy_io import load_policy
 from ctf.rewards import COMPONENTS, RewardTracker
@@ -150,18 +150,23 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 slot_index.append(k)
         step_actions = [dict() for _ in matches]
         if rows:
-            x = np.asarray(rows, dtype=np.float32)
+            x = rows_to_float32(rows)
             ui, si = np.asarray(unit_index), np.asarray(slot_index)
             if recurrent:
                 chosen, chosen_logp, hidden[ui, si] = actor.step_sample(x, hidden[ui, si], rng)
             else:
                 chosen, chosen_logp = actor.sample(x, rng)
-            obs[t, ui, si] = x
-            actions[t, ui, si] = chosen
-            logp[t, ui, si] = chosen_logp
-            alive[t, ui, si] = True
-            for i, (u, k) in enumerate(zip(unit_index, slot_index)):
-                a_t, a_r, a_j = int(chosen[i, 0]), int(chosen[i, 1]), int(chosen[i, 2])
+            if len(rows) == 3 * n_unit:  # everyone alive: rows are in (unit, slot) order
+                obs[t] = x.reshape(n_unit, 3, D)
+                actions[t] = chosen.reshape(n_unit, 3, 3)
+                logp[t] = chosen_logp.reshape(n_unit, 3)
+                alive[t] = True
+            else:
+                obs[t, ui, si] = x
+                actions[t, ui, si] = chosen
+                logp[t, ui, si] = chosen_logp
+                alive[t, ui, si] = True
+            for u, k, (a_t, a_r, a_j) in zip(unit_index, slot_index, chosen.tolist()):
                 unit = units[u]
                 unit["memories"][k].set_action(a_t, a_r, a_j)
                 step_actions[unit["match"]][unit["ids"][k]] = (
@@ -170,8 +175,7 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
             if opponents[m_index] is not None:
                 step_actions[m_index].update(opponents[m_index].act(all_obs[m_index]))
             match.act(step_actions[m_index])
-        for u, unit in enumerate(units):
-            rewards[t, u] = unit["tracker"].after()
+        rewards[t] = [unit["tracker"].after() for unit in units]
 
     stats = []
     for unit in units:

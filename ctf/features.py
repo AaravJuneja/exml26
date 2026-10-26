@@ -58,11 +58,81 @@ def _clip(value, low, high):
 
 
 def _num(value, default=0.0):
+    if type(value) is float:
+        return value if value - value == 0.0 else default  # finite check without a call
     try:
         number = float(value)
     except (TypeError, ValueError):
         return default
     return number if math.isfinite(number) else default
+
+
+_INV_CELL = 1.0 / CELL
+_INF = float("inf")
+
+
+def _rays(grid, x, y, directions):
+    """PlayerMemory.ray from (x, y) along each unit direction: [(distance, blocked), ...]."""
+    gx, gy = x / CELL + 0.5, y / CELL + 0.5  # cell (i, j) spans [i, i+1) here
+    ix, iy = int(math.floor(gx)), int(math.floor(gy))
+    n = GRID
+    cx0, cy0 = ix + GRID_HALF, iy + GRID_HALF
+    if cx0 < 0 or cx0 >= n or cy0 < 0 or cy0 >= n:
+        return [(0.0, 1.0)] * len(directions)
+    start = cy0 * n + cx0
+    state = grid[start]
+    if state != FREE:
+        return [(0.0, 1.0 if state == BLOCKED else 0.0)] * len(directions)
+    # Offsets from the start point to the next cell boundary on each side, in world units.
+    x_pos, x_neg = (ix + 1 - gx) * CELL, (gx - ix) * CELL
+    y_pos, y_neg = (iy + 1 - gy) * CELL, (gy - iy) * CELL
+    hits = []
+    for dx, dy in directions:
+        step_x = 1 if dx > 0 else -1
+        step_y = 1 if dy > 0 else -1
+        adx, ady = abs(dx), abs(dy)
+        if adx > 1e-12:
+            t_dx = _INV_CELL / adx * CELL * CELL
+            t_x = (x_pos if dx > 0 else x_neg) / adx
+        else:
+            t_dx = t_x = _INF
+        if ady > 1e-12:
+            t_dy = _INV_CELL / ady * CELL * CELL
+            t_y = (y_pos if dy > 0 else y_neg) / ady
+        else:
+            t_dy = t_y = _INF
+        row_step = step_y * n
+        cx, cy, index = cx0, cy0, start
+        # Step to the next cell; check the range, then the bounds of the coordinate that moved.
+        while True:
+            if t_x < t_y:
+                t = t_x
+                if t >= RAY_RANGE:
+                    hit = (RAY_RANGE, 0.0)
+                    break
+                t_x += t_dx
+                cx += step_x
+                if cx < 0 or cx >= n:
+                    hit = (t, 1.0)
+                    break
+                index += step_x
+            else:
+                t = t_y
+                if t >= RAY_RANGE:
+                    hit = (RAY_RANGE, 0.0)
+                    break
+                t_y += t_dy
+                cy += step_y
+                if cy < 0 or cy >= n:
+                    hit = (t, 1.0)
+                    break
+                index += row_step
+            state = grid[index]
+            if state != FREE:
+                hit = (t, 1.0 if state == BLOCKED else 0.0)
+                break
+        hits.append(hit)
+    return hits
 
 
 class PlayerMemory:
@@ -86,6 +156,7 @@ class PlayerMemory:
         self.bumps = []
         self.grid = bytearray(GRID * GRID)
         self.homes_marked = set()
+        self._homes_seen = set()
         self.deaths = {}
         self.enemies = {}
         self.prev_throttle = IDLE_THROTTLE
@@ -116,6 +187,9 @@ class PlayerMemory:
             self.grid[index] = BLOCKED
 
     def _mark_home(self, home):
+        if home in self._homes_seen:  # exact coordinates already handled (skips round())
+            return
+        self._homes_seen.add(home)
         key = (round(home[0], 3), round(home[1], 3))
         if key in self.homes_marked:
             return
@@ -132,39 +206,7 @@ class PlayerMemory:
         Exact grid traversal (Amanatides & Woo): every cell the ray crosses is checked,
         so a diagonal ray cannot slip past a blocked cell through its corner.
         """
-        gx, gy = x / CELL + 0.5, y / CELL + 0.5  # cell (i, j) spans [i, i+1) here
-        ix, iy = int(math.floor(gx)), int(math.floor(gy))
-        step_x = 1 if dx > 0 else -1
-        step_y = 1 if dy > 0 else -1
-        inv = 1.0 / CELL
-        if abs(dx) > 1e-12:
-            t_dx = inv / abs(dx)
-            t_x = ((ix + 1 - gx) if dx > 0 else (gx - ix)) * CELL / abs(dx)
-        else:
-            t_dx = t_x = float("inf")
-        if abs(dy) > 1e-12:
-            t_dy = inv / abs(dy)
-            t_y = ((iy + 1 - gy) if dy > 0 else (gy - iy)) * CELL / abs(dy)
-        else:
-            t_dy = t_y = float("inf")
-        t_dx, t_dy = t_dx * CELL * CELL, t_dy * CELL * CELL
-        t = 0.0
-        while t < RAY_RANGE:
-            cx, cy = ix + GRID_HALF, iy + GRID_HALF
-            if not (0 <= cx < GRID and 0 <= cy < GRID):
-                return t, 1.0
-            state = self.grid[cy * GRID + cx]
-            if state != FREE:
-                return t, 1.0 if state == BLOCKED else 0.0
-            if t_x < t_y:
-                t = t_x
-                t_x += t_dx
-                ix += step_x
-            else:
-                t = t_y
-                t_y += t_dy
-                iy += step_y
-        return RAY_RANGE, 0.0
+        return _rays(self.grid, x, y, ((dx, dy),))[0]
 
     # ----------------------------------------------------------------- updates
     def _add_bump(self, x, y, inferred=False):
@@ -205,7 +247,7 @@ class PlayerMemory:
         elif self.side is None:
             self.side = -1.0 if x > 0 else 1.0
         for home in (self.own_home, self.enemy_home):
-            if home is not None:
+            if home is not None and home not in self._homes_seen:
                 self._mark_home(home)
 
         gap = tick - self.prev_tick if self.prev_tick is not None else 0
@@ -292,73 +334,87 @@ def encode(observation, memory):
         return list(memory.cached)
     gap, prev_speed = memory.update(observation)
     me = observation.get("self") or {}
-    tick = int(_num(observation.get("tick"), 0))
     x, y, z = _num(me.get("x")), _num(me.get("y")), _num(me.get("z"), 1.0)
     vx, vy = _num(me.get("vx")), _num(me.get("vy"))
     speed = _num(me.get("speed"))
     yaw = _num(me.get("yaw"))
     side = memory.side
-    sin_yaw, cos_yaw = math.sin(yaw), math.cos(yaw)
-
-    def body(dx, dy):
-        return dx * sin_yaw + dy * cos_yaw, dx * cos_yaw - dy * sin_yaw
+    # Body frame of a world vector (dx, dy): (dx * s + dy * c, dx * c - dy * s).
+    s, c = math.sin(yaw), math.cos(yaw)
 
     cx, cy = side * x, side * y
+    lethal = (speed - LETHAL_SPEED) / 5.0
+    canonical_yaw = yaw if side > 0 else yaw + math.pi
+    e0 = (ARENA_LIMIT - cx) / 20.0
+    e1 = (ARENA_LIMIT + cx) / 20.0
+    e2 = (ARENA_LIMIT - cy) / 20.0
+    e3 = (ARENA_LIMIT + cy) / 20.0
+    player = int(_num(me.get("player"), 1))
+    g = gap / 60.0
+    dv = (speed - prev_speed) / 18.0
     out = [
         cx / 100.0, cy / 100.0, (z - 1.0) / 2.0,
+        (vx * s + vy * c) / 18.0, (vx * c - vy * s) / 18.0, _num(me.get("vz")) / 10.0,
+        speed / 18.0, -2.0 if lethal < -2.0 else 1.5 if lethal > 1.5 else lethal,
+        math.sin(canonical_yaw), math.cos(canonical_yaw),
+        1.0 if me.get("grounded") else 0.0, 1.0 if me.get("carrying") else 0.0,
+        0.0 if e0 < 0.0 else 1.0 if e0 > 1.0 else e0,
+        0.0 if e1 < 0.0 else 1.0 if e1 > 1.0 else e1,
+        0.0 if e2 < 0.0 else 1.0 if e2 > 1.0 else e2,
+        0.0 if e3 < 0.0 else 1.0 if e3 > 1.0 else e3,
+        1.0 if player == 1 else 0.0, 1.0 if player == 2 else 0.0, 1.0 if player == 3 else 0.0,
+        0.0 if g < 0.0 else 2.0 if g > 2.0 else g,
+        -1.0 if dv < -1.0 else 1.0 if dv > 1.0 else dv,
+        1.0 if memory.side_known else 0.0,
     ]
-    fwd_v, right_v = body(vx, vy)
-    out += [fwd_v / 18.0, right_v / 18.0, _num(me.get("vz")) / 10.0,
-            speed / 18.0, _clip((speed - LETHAL_SPEED) / 5.0, -2.0, 1.5)]
-    canonical_yaw = yaw if side > 0 else yaw + math.pi
-    out += [math.sin(canonical_yaw), math.cos(canonical_yaw),
-            1.0 if me.get("grounded") else 0.0, 1.0 if me.get("carrying") else 0.0]
-    out += [_clip((ARENA_LIMIT - cx) / 20.0, 0.0, 1.0), _clip((ARENA_LIMIT + cx) / 20.0, 0.0, 1.0),
-            _clip((ARENA_LIMIT - cy) / 20.0, 0.0, 1.0), _clip((ARENA_LIMIT + cy) / 20.0, 0.0, 1.0)]
-    player = int(_num(me.get("player"), 1))
-    out += [1.0 if player == 1 else 0.0, 1.0 if player == 2 else 0.0, 1.0 if player == 3 else 0.0]
-    out += [_clip(gap / 60.0, 0.0, 2.0), _clip((speed - prev_speed) / 18.0, -1.0, 1.0),
-            1.0 if memory.side_known else 0.0]
 
     score = observation.get("score") or {}
     team = me.get("team")
     mine = _num(score.get(team))
-    theirs = sum(_num(v) for k, v in score.items() if k != team)
-    dead_mates = sum(1 for d_key, d in memory.deaths.items()
-                     if d_key[0] != player and 0 <= tick - d[2] <= RESPAWN_TICKS)
-    out += [tick / 6000.0, _clip((mine - theirs) / 5.0, -2.0, 2.0),
-            _clip(mine / 10.0, 0.0, 3.0), _clip(theirs / 10.0, 0.0, 3.0), dead_mates / 2.0]
+    theirs = sum([_num(v) for k, v in score.items() if k != team])
+    dead_mates = 0
+    for d_key, d in memory.deaths.items():
+        if d_key[0] != player and 0 <= tick - d[2] <= RESPAWN_TICKS:
+            dead_mates += 1
+    lead = (mine - theirs) / 5.0
+    mine_n, theirs_n = mine / 10.0, theirs / 10.0
+    out += (tick / 6000.0, -2.0 if lead < -2.0 else 2.0 if lead > 2.0 else lead,
+            0.0 if mine_n < 0.0 else 3.0 if mine_n > 3.0 else mine_n,
+            0.0 if theirs_n < 0.0 else 3.0 if theirs_n > 3.0 else theirs_n, dead_mates / 2.0)
 
     my_id = me.get("id")
     own_flag = observation.get("own_flag") or {}
     fdx, fdy = _num(own_flag.get("x")) - x, _num(own_flag.get("y")) - y
-    ff, fr = body(fdx, fdy)
-    fvf, fvr = body(*memory.flag_velocity)
-    out += [ff / 100.0, fr / 100.0, _clip(math.hypot(fdx, fdy) / 100.0, 0.0, 2.0),
+    fvx, fvy = memory.flag_velocity
+    dist = math.hypot(fdx, fdy) / 100.0
+    out += ((fdx * s + fdy * c) / 100.0, (fdx * c - fdy * s) / 100.0,
+            0.0 if dist < 0.0 else 2.0 if dist > 2.0 else dist,
             1.0 if own_flag.get("at_home") else 0.0,
             1.0 if own_flag.get("carried_by", -1) != -1 else 0.0,
-            fvf / 18.0, fvr / 18.0]
+            (fvx * s + fvy * c) / 18.0, (fvx * c - fvy * s) / 18.0)
     enemy_flag = None
     for flag in observation.get("other_flags") or ():
         enemy_flag = flag
         break
     if enemy_flag is not None:
         edx, edy = _num(enemy_flag.get("x")) - x, _num(enemy_flag.get("y")) - y
-        ef, er = body(edx, edy)
         carrier = enemy_flag.get("carried_by", -1)
-        out += [1.0, ef / 100.0, er / 100.0, _clip(math.hypot(edx, edy) / 100.0, 0.0, 2.0),
+        dist = math.hypot(edx, edy) / 100.0
+        out += (1.0, (edx * s + edy * c) / 100.0, (edx * c - edy * s) / 100.0,
+                0.0 if dist < 0.0 else 2.0 if dist > 2.0 else dist,
                 1.0 if enemy_flag.get("at_home") else 0.0,
                 1.0 if carrier == my_id else 0.0,
-                1.0 if carrier not in (-1, my_id) else 0.0]
+                1.0 if carrier not in (-1, my_id) else 0.0)
     else:
-        out += [0.0] * 7
+        out += _ZEROS[:7]
     for home in (memory.own_home, memory.enemy_home):
         if home is None:
-            out += [0.0, 0.0, 0.0, 0.0]
+            out += _ZEROS[:4]
         else:
             hdx, hdy = home[0] - x, home[1] - y
-            hf, hr = body(hdx, hdy)
-            out += [1.0, hf / 100.0, hr / 100.0, _clip(math.hypot(hdx, hdy) / 100.0, 0.0, 2.0)]
+            dist = math.hypot(hdx, hdy) / 100.0
+            out += (1.0, (hdx * s + hdy * c) / 100.0, (hdx * c - hdy * s) / 100.0,
+                    0.0 if dist < 0.0 else 2.0 if dist > 2.0 else dist)
 
     enemies = []
     for record in memory.enemies.values():
@@ -366,18 +422,20 @@ def encode(observation, memory):
         dx, dy = ex - x, ey - y
         enemies.append((tick - etick, dx * dx + dy * dy, dx, dy, ez, evx, evy, espeed, ecarry,
                         eyaw, egrounded))
-    enemies.sort(key=lambda e: (e[0] > 0, e[1]))
-    for i in range(ENEMY_SLOTS):
-        if i < len(enemies):
-            age, dist2, dx, dy, ez, evx, evy, espeed, ecarry, eyaw, egrounded = enemies[i]
-            ef, er = body(dx, dy)
-            rvf, rvr = body(evx - vx, evy - vy)
-            out += [1.0, age / ENEMY_MEMORY_TICKS, ef / 40.0, er / 40.0,
-                    _clip(math.sqrt(dist2) / 40.0, 0.0, 2.0), rvf / 18.0, rvr / 18.0,
-                    espeed / 18.0, (speed - espeed) / 18.0, ecarry, _clip(ez - z, -3.0, 3.0),
-                    math.sin(eyaw - yaw), math.cos(eyaw - yaw), egrounded]
-        else:
-            out += [0.0] * ENEMY_DIM
+    if len(enemies) > 1:
+        enemies.sort(key=_enemy_order)
+    for age, dist2, dx, dy, ez, evx, evy, espeed, ecarry, eyaw, egrounded in enemies[:ENEMY_SLOTS]:
+        rx, ry = evx - vx, evy - vy
+        dist = math.sqrt(dist2) / 40.0
+        dz = ez - z
+        out += (1.0, age / ENEMY_MEMORY_TICKS, (dx * s + dy * c) / 40.0, (dx * c - dy * s) / 40.0,
+                0.0 if dist < 0.0 else 2.0 if dist > 2.0 else dist,
+                (rx * s + ry * c) / 18.0, (rx * c - ry * s) / 18.0,
+                espeed / 18.0, (speed - espeed) / 18.0, ecarry,
+                -3.0 if dz < -3.0 else 3.0 if dz > 3.0 else dz,
+                math.sin(eyaw - yaw), math.cos(eyaw - yaw), egrounded)
+    if len(enemies) < ENEMY_SLOTS:
+        out += _ZEROS[:ENEMY_DIM * (ENEMY_SLOTS - len(enemies))]
 
     near = []
     limit2 = BUMP_RANGE * BUMP_RANGE
@@ -386,40 +444,57 @@ def encode(observation, memory):
         d2 = dx * dx + dy * dy
         if d2 <= limit2:
             near.append((d2, dx, dy))
-    near.sort()
-    for i in range(BUMP_SLOTS):
-        if i < len(near):
-            _, dx, dy = near[i]
-            bf, br = body(dx, dy)
-            out += [1.0, bf / BUMP_RANGE, br / BUMP_RANGE]
-        else:
-            out += [0.0, 0.0, 0.0]
+    if near:
+        near.sort()
+        for _, dx, dy in near[:BUMP_SLOTS]:
+            out += (1.0, (dx * s + dy * c) / BUMP_RANGE, (dx * c - dy * s) / BUMP_RANGE)
+    if len(near) < BUMP_SLOTS:
+        out += _ZEROS[:BUMP_DIM * (BUMP_SLOTS - len(near))]
 
-    deaths = sorted((d for d in memory.deaths.values() if tick - d[2] <= DANGER_TICKS),
-                    key=lambda d: -d[2])
-    for i in range(DANGER_SLOTS):
-        if i < len(deaths):
-            dx, dy = deaths[i][0] - x, deaths[i][1] - y
-            df, dr = body(dx, dy)
-            out += [1.0, _clip(df / 60.0, -2.0, 2.0), _clip(dr / 60.0, -2.0, 2.0),
-                    (tick - deaths[i][2]) / DANGER_TICKS, 0.0 if deaths[i][3] else 1.0]
-        else:
-            out += [0.0] * DANGER_DIM
+    deaths = ()
+    if memory.deaths:
+        deaths = [d for d in memory.deaths.values() if tick - d[2] <= DANGER_TICKS]
+        deaths.sort(key=_newest_first)
+        for ddx, ddy, dtick, wall in deaths[:DANGER_SLOTS]:
+            dx, dy = ddx - x, ddy - y
+            df, dr = (dx * s + dy * c) / 60.0, (dx * c - dy * s) / 60.0
+            out += (1.0, -2.0 if df < -2.0 else 2.0 if df > 2.0 else df,
+                    -2.0 if dr < -2.0 else 2.0 if dr > 2.0 else dr,
+                    (tick - dtick) / DANGER_TICKS, 0.0 if wall else 1.0)
+    if len(deaths) < DANGER_SLOTS:
+        out += _ZEROS[:DANGER_DIM * (DANGER_SLOTS - len(deaths))]
 
-    for angle in RAY_ANGLES:
-        distance, _ = memory.ray(x, y, math.sin(yaw + angle), math.cos(yaw + angle))
-        out.append(distance / RAY_RANGE)
+    directions = [(math.sin(yaw + angle), math.cos(yaw + angle)) for angle in RAY_ANGLES]
     if speed > 0.5:
-        distance, blocked = memory.ray(x, y, vx / speed, vy / speed)
-    else:
-        distance, blocked = memory.ray(x, y, sin_yaw, cos_yaw)
-    known = 0
+        directions.append((vx / speed, vy / speed))
+    grid = memory.grid
+    hits = _rays(grid, x, y, directions)
+    for i in range(len(RAY_ANGLES)):
+        out.append(hits[i][0] / RAY_RANGE)
+    # Without speed the last ray is the facing ray: angle 0, (sin(yaw), cos(yaw)).
+    distance, blocked = hits[-1] if speed > 0.5 else hits[0]
+    # Known-clear cells of the 5x5 block around the player (_cell is separable in x, y).
+    cols = []
+    rows = []
     for i in (-2, -1, 0, 1, 2):
-        for j in (-2, -1, 0, 1, 2):
-            index = memory._cell(x + i * CELL, y + j * CELL)
-            if index >= 0 and memory.grid[index] == FREE:
-                known += 1
-    out += [distance / RAY_RANGE, blocked, known / 25.0]
+        col = int(math.floor((x + i * CELL) / CELL + 0.5)) + GRID_HALF
+        if 0 <= col < GRID:
+            cols.append(col)
+        row = int(math.floor((y + i * CELL) / CELL + 0.5)) + GRID_HALF
+        if 0 <= row < GRID:
+            rows.append(row * GRID)
+    known = 0
+    if len(cols) == 5 and cols[4] - cols[0] == 4 and cols[1] - cols[0] == 1 \
+            and cols[2] - cols[1] == 1 and cols[3] - cols[2] == 1:
+        first, stop = cols[0], cols[4] + 1
+        for row in rows:
+            known += grid.count(FREE, row + first, row + stop)
+    else:
+        for row in rows:
+            for col in cols:
+                if grid[row + col] == FREE:
+                    known += 1
+    out += (distance / RAY_RANGE, blocked, known / 25.0)
 
     action = [0.0] * ACTION_DIM
     action[memory.prev_throttle] = 1.0
@@ -428,3 +503,14 @@ def encode(observation, memory):
     out += action
     memory.cached = out
     return list(out)
+
+
+_ZEROS = [0.0] * 64
+
+
+def _enemy_order(e):
+    return (e[0] > 0, e[1])
+
+
+def _newest_first(d):
+    return -d[2]

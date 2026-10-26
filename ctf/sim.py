@@ -35,6 +35,9 @@ DOCUMENTED_KEYS = (
     "score", "sonar_receive", "death_messages",
 )
 _MARGIN = SPHERE_RADIUS + 3.0
+_BP_CELL = 4.0     # broad-phase cache cell size
+_BP_EXTENT = 104.0  # cached cells cover [-104, 104]^2; positions outside use the direct filter
+_BP_N = int(2 * _BP_EXTENT / _BP_CELL)
 
 
 def _ramp_radius(ramp):
@@ -66,6 +69,7 @@ class Match:
         self.obstacles = generate_map(homes, seed=seed)
         self.ramps = generate_ramps(self.obstacles, homes, seed=ramp_seed)
         self._ramp_radii = [_ramp_radius(r) for r in self.ramps]
+        self._bp_cells = {}
         self._respawn_at = {}
         self._last_sonar = {}
         self._death_log = []
@@ -101,14 +105,63 @@ class Match:
             if math.hypot(x - r.cx, y - r.cy) <= radius + _MARGIN
         ]
 
+    def _near(self, sphere):
+        """(obstacles, ramps) that may touch `sphere`: a cached superset of the
+        _near_obstacles/_near_ramps lists for every point of its broad-phase cell.
+
+        Every extra item lies farther than its bounding radius plus _MARGIN, where
+        the engine collision and ground functions leave the sphere unchanged.
+        """
+        x, y = sphere.x, sphere.y
+        if not (-_BP_EXTENT <= x < _BP_EXTENT and -_BP_EXTENT <= y < _BP_EXTENT):
+            return self._near_obstacles(sphere), self._near_ramps(sphere)
+        i = int((x + _BP_EXTENT) / _BP_CELL)
+        j = int((y + _BP_EXTENT) / _BP_CELL)
+        if i >= _BP_N:
+            i = _BP_N - 1
+        if j >= _BP_N:
+            j = _BP_N - 1
+        key = j * _BP_N + i
+        cell = self._bp_cells.get(key)
+        if cell is None:
+            x0, y0 = i * _BP_CELL - _BP_EXTENT, j * _BP_CELL - _BP_EXTENT
+            x1, y1 = x0 + _BP_CELL, y0 + _BP_CELL
+
+            def reach(px, py):  # distance from (px, py) to the cell rectangle
+                return math.hypot(max(x0 - px, 0.0, px - x1), max(y0 - py, 0.0, py - y1))
+
+            slack = _MARGIN + 0.5
+            cell = (
+                [o for o in self.obstacles
+                 if reach(o.centroid[0], o.centroid[1]) <= o.bounding_radius + slack],
+                [r for r, radius in zip(self.ramps, self._ramp_radii)
+                 if reach(r.cx, r.cy) <= radius + slack],
+            )
+            self._bp_cells[key] = cell
+        return cell
+
     def _blocked(self, a, b):
         ax, ay, bx, by = a.x, a.y, b.x, b.y
         low = min(a.z, b.z)
+        if ax < bx:
+            min_x, max_x = ax, bx
+        else:
+            min_x, max_x = bx, ax
+        if ay < by:
+            min_y, max_y = ay, by
+        else:
+            min_y, max_y = by, ay
         for obstacle in self.obstacles:
             if obstacle.height <= low:
                 continue
             if self.broadphase:
                 cx, cy = obstacle.centroid
+                reach = obstacle.bounding_radius + 1.0
+                # Outside the segment's bounding box grown by more than the radius,
+                # the centroid is farther than the radius from the segment.
+                if (cx < min_x - reach or cx > max_x + reach
+                        or cy < min_y - reach or cy > max_y + reach):
+                    continue
                 dist, _, _ = distance_point_to_segment(cx, cy, ax, ay, bx, by)
                 if dist > obstacle.bounding_radius + 1e-6:
                     continue
@@ -116,7 +169,7 @@ class Match:
                 return True
         return False
 
-    def _visible_enemies(self, sphere, alive):
+    def _visible_enemies(self, sphere, alive, states):
         visible = []
         for other in alive:
             if other.team == sphere.team or not other.alive:
@@ -130,7 +183,7 @@ class Match:
                 continue
             if self._blocked(sphere, other):
                 continue
-            visible.append(other.to_state_dict())
+            visible.append(dict(states[other.id]))
         return visible
 
     def _audible_sonars(self, receiver, by_id, sonar_snapshot):
@@ -156,12 +209,14 @@ class Match:
         recent = self.recent_deaths()
         sonar_snapshot = dict(self._last_sonar)
         by_id = {s.id: s for s in self.spheres}
+        # One snapshot per sphere; every observation gets its own copies, as in Game.
+        states = {s.id: s.to_state_dict() for s in alive}
         observations = {}
         for sphere in alive:
             observation = {
                 "tick": self.tick,
-                "self": sphere.to_state_dict(),
-                "visible_enemies": self._visible_enemies(sphere, alive),
+                "self": dict(states[sphere.id]),
+                "visible_enemies": self._visible_enemies(sphere, alive, states),
                 "own_flag": dict(flag_states[sphere.team]),
                 "other_flags": [dict(state) for team, state in flag_states.items()
                                 if team != sphere.team],
@@ -172,7 +227,7 @@ class Match:
             if self.teammates_field:
                 # Undocumented backend extras; only for the provided scripted opponents.
                 observation["teammates"] = [
-                    s.to_state_dict() for s in alive if s.team == sphere.team and s.id != sphere.id
+                    dict(states[s.id]) for s in alive if s.team == sphere.team and s.id != sphere.id
                 ]
                 observation["sonar_recieve"] = observation["sonar_receive"]
             observations[sphere.id] = observation
@@ -196,16 +251,21 @@ class Match:
             sphere.integrate(TICK_DT)
         physics.clamp_to_arena(spheres)
         if self.broadphase:
-            for sphere in spheres:
-                ramps = self._near_ramps(sphere)
+            # Dead spheres are skipped by every engine function below.
+            live = [s for s in spheres if s.alive]
+            near = self._near
+            for sphere in live:
+                ramps = near(sphere)[1]
                 if ramps:
                     physics.resolve_ramp_collisions([sphere], ramps)
-            for sphere in spheres:
-                obstacles = self._near_obstacles(sphere)
+            for sphere in live:
+                obstacles = near(sphere)[0] if sphere.alive else None
                 if obstacles:
                     physics.resolve_obstacle_collisions([sphere], obstacles)
-            for sphere in spheres:
-                physics.resolve_ground([sphere], self._near_ramps(sphere), self._near_obstacles(sphere))
+            for sphere in live:
+                if sphere.alive:
+                    obstacles, ramps = near(sphere)
+                    physics.resolve_ground([sphere], ramps, obstacles)
         else:
             physics.resolve_ramp_collisions(spheres, self.ramps)
             physics.resolve_obstacle_collisions(spheres, self.obstacles)

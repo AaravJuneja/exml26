@@ -164,9 +164,20 @@ def _mark_line(x0, y0, x1, y1):
     d = math.hypot(x1 - x0, y1 - y0)
     n = int(d * 2.0) + 1
     safe = M.safe
+    top = _N - 1
     for k in range(n + 1):
         t = k / n
-        safe[_cell(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)] = 1
+        i = int(x0 + (x1 - x0) * t + 100.0)  # _cell, inlined
+        j = int(y0 + (y1 - y0) * t + 100.0)
+        if i < 0:
+            i = 0
+        elif i > top:
+            i = top
+        if j < 0:
+            j = 0
+        elif j > top:
+            j = top
+        safe[j * _N + i] = 1
 
 
 def _unmark(x, y, r):
@@ -369,9 +380,17 @@ def _avoid(x, y, a, dist, tick):
 
 def _gov_dir(x, y, ux, uy, sp):
     L = 2.5 + sp * 0.16
+    hx, hy = M.home
+    ex, ey = M.ehome
+    safe = M.safe
     d = 0.7
     while d <= L:
-        if not _ok(x + ux * d, y + uy * d):
+        px = x + ux * d  # _ok(px, py), inlined
+        py = y + uy * d
+        if not (px > 99.5 or px < -99.5 or py > 99.5 or py < -99.5
+                or (px - hx) * (px - hx) + (py - hy) * (py - hy) < _HOME_R2
+                or (px - ex) * (px - ex) + (py - ey) * (py - ey) < _HOME_R2
+                or safe[_cell(px, py)] != 0):
             return False
         d += 0.7
     return True

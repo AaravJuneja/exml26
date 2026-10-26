@@ -1,31 +1,62 @@
 """Numpy-only inference pieces (no torch): head layout, NumpyActor, NumpyGRUActor, RunningNorm."""
 
+import struct
+
 import numpy as np
 
-from ctf.features import N_THROTTLE, N_TURN, _num
+from ctf.features import FEATURE_DIM, N_THROTTLE, N_TURN, _num
 
 HEAD_SIZES = (N_THROTTLE, N_TURN, 2)
 N_LOGITS = sum(HEAD_SIZES)
+HEAD_STARTS = (0, N_THROTTLE, N_THROTTLE + N_TURN)
 GRU_KEYS = ("W_in", "b_in", "W_ih", "b_ih", "W_hh", "b_hh", "W_out", "b_out")
 
 
+_PACK_ROW = struct.Struct(f"{FEATURE_DIM}f").pack
+
+
+def rows_to_float32(rows):
+    """np.asarray(rows, dtype=np.float32) for lists of FEATURE_DIM floats, faster.
+
+    struct's 'f' packing is the same C double -> float conversion; anything it
+    rejects (wrong length, out of float32 range) goes through numpy instead.
+    """
+    if not rows:
+        return np.asarray(rows, dtype=np.float32)
+    try:
+        data = bytearray().join([_PACK_ROW(*row) for row in rows])
+    except (struct.error, OverflowError, TypeError):
+        return np.asarray(rows, dtype=np.float32)
+    return np.frombuffer(data, dtype=np.float32).reshape(len(rows), FEATURE_DIM)
+
+
 def sample_logits(logits, rng, greedy=False):
-    """Return (actions int array [N,3], joint log-prob [N]) for a batch of logits."""
-    actions, logp = [], np.zeros(len(logits), dtype=np.float32)
-    start = 0
-    for size in HEAD_SIZES:
-        head = logits[:, start:start + size]
-        start += size
-        shifted = head - head.max(axis=1, keepdims=True)
-        log_softmax = shifted - np.log(np.exp(shifted).sum(axis=1, keepdims=True))
+    """Return (actions int array [N,3], joint log-prob [N]) for a batch of logits.
+
+    Elementwise steps and the (exact) maxima run on all heads at once; every
+    per-head sum keeps its own reduction, so results match a head-by-head loop.
+    """
+    n = len(logits)
+    shifted = logits - np.repeat(np.maximum.reduceat(logits, HEAD_STARTS, axis=1), HEAD_SIZES, axis=1)
+    exp = np.exp(shifted)
+    log_norm = np.log(np.stack([exp[:, a:a + s].sum(axis=1)
+                                for a, s in zip(HEAD_STARTS, HEAD_SIZES)], axis=1))
+    if not greedy:
+        # One draw for all heads: the same numbers, in the same order, as one (N, size)
+        # draw per head.
+        gumbel = -np.log(-np.log(rng.random(n * N_LOGITS) + 1e-12) + 1e-12)
+    actions = np.empty((n, len(HEAD_SIZES)), dtype=np.int64)
+    for k, (a, s) in enumerate(zip(HEAD_STARTS, HEAD_SIZES)):
+        head = logits[:, a:a + s]
         if greedy:
-            index = head.argmax(axis=1)
+            actions[:, k] = head.argmax(axis=1)
         else:
-            gumbel = -np.log(-np.log(rng.random(head.shape) + 1e-12) + 1e-12)
-            index = (head + gumbel).argmax(axis=1)
-        actions.append(index)
-        logp += log_softmax[np.arange(len(head)), index]
-    return np.stack(actions, axis=1).astype(np.int64), logp
+            actions[:, k] = (head + gumbel[n * a:n * (a + s)].reshape(n, s)).argmax(axis=1)
+    chosen = shifted[np.arange(n)[:, None], actions + HEAD_STARTS] - log_norm  # log-softmax
+    logp = np.zeros(n, dtype=np.float32)
+    for k in range(len(HEAD_SIZES)):
+        logp += chosen[:, k]
+    return actions, logp
 
 
 def memory_is_fresh(memory, observation):
@@ -153,7 +184,7 @@ class PolicyMemories:
             if self.hidden is not None and memory_is_fresh(memory, observation):
                 self.hidden[key][:] = 0.0
             rows.append(self.encode(observation, memory))
-        return np.asarray(rows, dtype=np.float32)
+        return rows_to_float32(rows)
 
     def act(self, keys, x, rng, greedy=False):
         """Sample actions [N,3] for encoded rows `x`; records them in each memory."""

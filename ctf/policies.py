@@ -16,14 +16,27 @@ SCRIPTED = {
 }
 
 
+_CODE_CACHE = {}
+
+
 def load_decide(path):
-    """Fresh module instance, so module-level state is private to one player."""
+    """Fresh module instance, so module-level state is private to one player.
+
+    The source is compiled once per process (keyed by path, size and mtime) and
+    executed into a new module namespace for every instance.
+    """
     path = Path(path)
     if not path.is_absolute():
         path = ROOT / path
+    stat = path.stat()
+    key = (str(path), stat.st_size, stat.st_mtime_ns)
+    code = _CODE_CACHE.get(key)
+    if code is None:
+        code = compile(path.read_bytes(), str(path), "exec")
+        _CODE_CACHE[key] = code
     spec = importlib.util.spec_from_file_location(f"ctf_policy_{next(_counter)}", path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    exec(code, module.__dict__)
     return module.decide
 
 
