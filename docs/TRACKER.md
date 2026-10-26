@@ -46,7 +46,11 @@ Working log. The summary is `docs/tracker.html`.
 | m2d | Round-2 fixes, exact discounted PBRS | Stopped: shaping ≈ +30 per match from the (γ−1)Φ idle bonus; 0 pickups at 16M samples |
 | m2e | Undiscounted shaping differences | **M2 gate passed**: 8.0 goals per match vs idle, 0.78 wall deaths per player at 150M samples; held-out 96% vs idle, 4% vs baseline |
 | m3a | From m2e, scripted mix plus mirror, win-coef 0.3 | Stopped after round 3 (norm re-opened by `--init`; bootstrapped win head) |
-| m3b | Same mix, round-3 fixes | running |
+| m3b | Same mix, round-3 fixes | Stopped at u~160. Held-out u150: baseline 44%, relay 6%, others 0–3% |
+| m3c | Features v2 (clear-ground map + rays), warm-start from m3b via surgery | running |
+
+## Diagnosis notes
+- **m3b vs relay (seed 1003): lost 2–19.** Relay players average 11–13 u/s (above 11 for 54–73% of the time); ours average 6 u/s (above 11 for 4–9%). We had 13 player deaths and relay 4; pickups 6 vs 20. Cause: no information about safe ground, so we could not sprint. Fix: features v2.
 
 ## Backlog from the reviews
 - Long-horizon win objective: a separate undiscounted win-value head (γ=1, terminal win indicator), with its advantage added to the PPO advantage at weight β.

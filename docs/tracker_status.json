@@ -1,5 +1,5 @@
 {
- "summary": "<b>M2 passed</b>: the policy, trained from scratch, scores <b>8 goals per match against idle opponents</b> (150M samples, about 1 hour), with 0.8 wall deaths per player.<br><br><b>M3 is running</b> (run <b>m3b</b>, started from the M2 weights) against a mixed pool:<ul><li>the provided bots</li><li>7 new, much stronger scripted training bots (relay scores ~10.9 per match and beats baseline 32-0)</li><li>10% mirror self-play</li></ul>It also uses the long-horizon win objective.<br><br>Review: 3 capped rounds are complete for Phases 1-2; all critical and major findings are fixed. Your ramp fix is applied everywhere. Another session pushed old-approach work to main; I merged it rather than overwriting it (the engine is behaviour-identical, and all tests pass).",
+ "summary": "<b>M3 in progress.</b> Against held-out maps, the M3 policy (m3b) went from 3% to <b>44% wins vs baseline</b> in about 150 updates, but scored only 6% vs relay and 0% vs balanced (both score ~11 per match).<br><br>A replay analysis showed why: relay's players average 11-13 u/s, above lethal speed over half the time, because they remember ground they have already crossed. Ours averaged about 6 u/s, lost every race, and died 13 times in collisions (the slower sphere dies).<br><br><b>Fix (features v2):</b> each player now keeps a <i>known-clear ground map</i>, built from its own path, enemies it has seen, flag carriers and the home areas, with bumps marked as blocked. From the map it gets 8 body-relative ray distances plus a velocity ray, so the network can learn when sprinting is safe. Run <b>m3c</b> warm-starts from m3b via feature surgery: the new inputs start with zero weight, so the policy starts out identical to m3b.<br><br>Also new:<ul><li>an optional GRU recurrent policy (built and tested; under review)</li><li>each training job now runs from its own frozen copy of the code</li></ul>",
  "milestones": [
   {
    "id": "M0",
@@ -23,7 +23,7 @@
    "id": "M3",
    "title": "Beat scripted pool (\u226590% wins vs provided bots)",
    "state": "active",
-   "note": "m3b running from M2 weights; 7 strong scripted bots + provided bots + mirror"
+   "note": "m3b: 44% vs baseline held-out; m3c (features v2 clear-ground map) running"
   },
   {
    "id": "M4",
@@ -34,8 +34,8 @@
   {
    "id": "M5",
    "title": "Improvements: GRU, sonar, bigger nets, PBT",
-   "state": "todo",
-   "note": ""
+   "state": "active",
+   "note": "GRU option built; clear-ground features v2 added"
   },
   {
    "id": "M6",
@@ -93,9 +93,14 @@
  ],
  "runs": [
   {
-   "name": "m3b",
+   "name": "m3c",
    "state": "running",
-   "description": "From M2 (m2e) weights. Opponent mix: baseline 15%, example/example2 5% each, rusher/guardian/camper/relay/balanced 10% each, chaos/steady 5% each, idle 5%, mirror 10%. Win objective coefficient 0.3."
+   "description": "Features v2 (clear-ground rays), warm-started from m3b via feature surgery. Same opponent mix."
+  },
+  {
+   "name": "m3b",
+   "state": "stopped",
+   "description": "M3 with features v1, from M2 weights; 44% vs baseline held-out at u150."
   },
   {
    "name": "m2e",
@@ -119,6 +124,10 @@
   {
    "time": "2026-10-26 01:35",
    "text": "M2 gate passed (8 goals/match vs idle). 7 strong scripted training opponents added. Review round 3 done. M3 (m3b) running. Merged another session's push to main without loss."
+  },
+  {
+   "time": "2026-10-26 02:20",
+   "text": "Replay analysis: our players far slower than scripted bots. Added a clear-ground memory map and ray inputs (features v2) with warm-start surgery; m3c running. GRU option built."
   }
  ]
 }
