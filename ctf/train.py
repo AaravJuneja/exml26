@@ -25,6 +25,7 @@ import glob
 import json
 import math
 import multiprocessing as mp
+import gc
 import os
 import time
 from pathlib import Path
@@ -35,7 +36,8 @@ import torch
 from ctf import action_space as A
 from ctf import feature_layouts as L
 from ctf import features as F
-from ctf.nets import Critic, RunningNorm, actor_to_numpy, build_actor, log_prob_entropy
+from ctf.nets import (Critic, RunningNorm, actor_to_numpy, build_actor, log_prob_entropy,
+                      log_softmax_heads, split_heads)
 from ctf.policy_io import save_policy
 from ctf.rewards import DEFAULT_WEIGHTS
 from ctf.rollout import worker_main
@@ -140,6 +142,8 @@ def merge_results(results, recurrent):
     keys = ("obs", "actions", "logp", "rewards", "alive") + (("resets",) if recurrent else ())
     if "teacher_actions" in results[0]:
         keys += ("teacher_actions", "teacher_valid")
+    if "teacher_soft" in results[0]:
+        keys += ("teacher_soft",)
     batch = {key: np.concatenate([r[key] for r in results], axis=1) for key in keys}
     if recurrent:
         N = batch["alive"].shape[1] * 3
@@ -181,6 +185,60 @@ def widen_mlp(weights, new_hidden, rng, noise=1e-4):
         out[f"net.{layer}.bias"] = b_in[mapping].clone()
         out[f"net.{nxt}.weight"] = (w_out / counts)[:, mapping].clone()
     return out
+
+
+def team_critic_dim(feature_dim):
+    """--team-critic input: own features, both teammates' (player order), their alive flags."""
+    return 3 * feature_dim + 2
+
+
+def widen_critic_input(weights, feature_dim):
+    """A per-player critic's weights as a team critic computing the same function:
+    zero input weights for the teammates' columns (team-critic weights pass through)."""
+    key = _input_layer(weights, feature_dim)
+    if key is None:
+        return weights
+    w = weights[key]
+    wide = torch.zeros((w.shape[0], team_critic_dim(feature_dim)), dtype=w.dtype, device=w.device)
+    wide[:, :feature_dim] = w
+    return dict(weights, **{key: wide})
+
+
+def pad_optimizer_state(optimizer):
+    """Zero-pad Adam moments whose shape no longer matches the (widened) parameter."""
+    for group in optimizer.param_groups:
+        for param in group["params"]:
+            state = optimizer.state.get(param)
+            if not state:
+                continue
+            for name in ("exp_avg", "exp_avg_sq"):
+                old = state.get(name)
+                if old is not None and old.shape != param.shape:
+                    new = torch.zeros_like(param)
+                    new[tuple(slice(0, n) for n in old.shape)] = old.to(param.device)
+                    state[name] = new
+
+
+def team_mates(flat_index, n_cols):
+    """For alive decisions at flat grid positions t * n_cols + unit * 3 + slot: the positions
+    (in flat_index order) of the two teammates' decisions on the same tick, in player
+    order, -1 where that teammate is dead. Returns an [n, 2] int64 array."""
+    pos_of = np.full(int(flat_index.max()) + n_cols + 1 if len(flat_index) else 1, -1, np.int64)
+    pos_of[flat_index] = np.arange(len(flat_index))
+    t_of, n_of = np.divmod(flat_index, n_cols)
+    unit, slot = np.divmod(n_of, 3)
+    base = t_of * n_cols + unit * 3
+    first = np.where(slot == 0, 1, 0)
+    second = np.where(slot == 2, 1, 2)
+    return np.stack([pos_of[base + first], pos_of[base + second]], axis=1)
+
+
+def team_input(x_all, mates, idx):
+    """Team-critic rows for positions idx: [x, x_mate_a, x_mate_b, alive_a, alive_b]."""
+    m = mates[idx]
+    ok = (m >= 0).to(x_all.dtype)
+    rows = x_all[m.clamp(min=0)] * ok.unsqueeze(-1)
+    return torch.cat([x_all[idx], rows[:, 0], rows[:, 1], ok], dim=1)
 
 
 V3_THROTTLE = L.V3_ACTION_TABLES["throttle"]
@@ -298,7 +356,9 @@ class Trainer:
         self.space = A.get(getattr(args, "action_space", "bins"))
         self.actor = build_actor(args.arch, tuple(args.hidden), self.space.feature_dim,
                                  self.space.head_sizes).to(self.device)
-        self.critic = Critic(tuple(args.critic_hidden), self.space.feature_dim).to(self.device)
+        self.team_critic = bool(getattr(args, "team_critic", 0))
+        critic_in = team_critic_dim(self.space.feature_dim) if self.team_critic else self.space.feature_dim
+        self.critic = Critic(tuple(args.critic_hidden), critic_in).to(self.device)
         self.optimizer = torch.optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters()), lr=args.lr, eps=1e-5)
         self.norm = RunningNorm(self.space.feature_dim)
@@ -362,12 +422,16 @@ class Trainer:
                 state = dict(state, critic=widen_mlp(state["critic"], self.args.critic_hidden,
                                                      self.rng))
         self.actor.load_state_dict(state["actor"])
+        if self.team_critic:
+            state = dict(state, critic=widen_critic_input(state["critic"], self.space.feature_dim))
         self.critic.load_state_dict(state["critic"])
         self.norm.load(state["norm"])
         self.ret_norm.load(state["ret_norm"])
         self.norm_frozen = state.get("norm_frozen", state["update"] >= self.args.norm_updates)
         if not weights_only:
             self.optimizer.load_state_dict(state["optimizer"])
+            if self.team_critic:
+                pad_optimizer_state(self.optimizer)
             self.update, self.samples = state["update"], state["samples"]
             self.opp_winrate = state.get("opp_winrate", {})
             if "np_rng" in state:
@@ -491,7 +555,13 @@ class Trainer:
         x_all = torch.clamp((x_all - mean) / std, -5.0, 5.0)
         lap("prep_s")
         with torch.no_grad():
-            heads = torch.cat([self.critic(chunk) for chunk in torch.split(x_all, 65536)])
+            if self.team_critic:
+                mates = torch.as_tensor(team_mates(flat_index, E * 3), device=self.device)
+                positions = torch.arange(len(flat_index), device=self.device)
+                heads = torch.cat([self.critic(team_input(x_all, mates, chunk))
+                                   for chunk in torch.split(positions, 65536)])
+            else:
+                heads = torch.cat([self.critic(chunk) for chunk in torch.split(x_all, 65536)])
         heads = heads.cpu().numpy().astype(np.float64)
         v_raw = heads[:, 0] * self.ret_norm.std[0] + self.ret_norm.mean[0]
         values = np.zeros(T * E * 3, dtype=np.float64)
@@ -535,12 +605,21 @@ class Trainer:
                 device=self.device)
             teach_valid = torch.as_tensor(
                 batch["teacher_valid"].reshape(-1)[flat_index].astype(np.float32), device=self.device)
+            teach_soft = None
+            if "teacher_soft" in batch:  # policy teacher: per-head soft targets (ctf/distill.py)
+                width = batch["teacher_soft"].shape[-1]
+                teach_soft = torch.as_tensor(
+                    batch["teacher_soft"].reshape(T * E * 3, width)[flat_index], device=self.device)
+                q = teach_soft.clamp(min=1e-12)
+                teach_entropy = -(teach_soft * q.log()).sum(-1)
 
         n = len(flat_index)
         lap("gae_s")
         ent_coef = self.entropy_coef()
         stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": [],
                  "kick_ce": [], "kick_agree": []}
+        if kick_coef and teach_soft is not None:
+            stats.update(kick_kl=[], kick_agree_mode=[])
         extra = {}
         if self.recurrent:
             seqs = build_sequences(alive, batch["resets"].reshape(T, E * 3), batch["h0_key"],
@@ -565,7 +644,7 @@ class Trainer:
                 surrogate = torch.min(ratio * adv_t[idx],
                                       torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv_t[idx])
                 pi_loss = -surrogate.mean()
-                out = self.critic(x_all[idx])
+                out = self.critic(team_input(x_all, mates, idx) if self.team_critic else x_all[idx])
                 v_loss = 0.5 * (out[:, 0] - ret_t[idx]).pow(2).mean()
                 v_loss = v_loss + 0.5 * (out[:, 1] - win_t[idx]).pow(2).mean()
                 if actor_stopped:  # past the trust region: no more policy-gradient steps
@@ -577,9 +656,21 @@ class Trainer:
                     # states the student visits (DAgger-style), annealed to zero. Supervised,
                     # so it keeps training after the PPO trust-region stop.
                     valid = teach_valid[idx]
-                    teach_logp, _ = log_prob_entropy(logits, teach_t[idx],
-                                                     self.space.head_sizes)
-                    kick_ce = -(teach_logp * valid).sum() / valid.sum().clamp(min=1.0)
+                    count = valid.sum().clamp(min=1.0)
+                    if teach_soft is None:
+                        teach_logp, _ = log_prob_entropy(logits, teach_t[idx],
+                                                         self.space.head_sizes)
+                    else:
+                        teach_logp = (teach_soft[idx] * log_softmax_heads(
+                            logits, self.space.head_sizes)).sum(-1)
+                        with torch.no_grad():
+                            stats["kick_kl"].append(
+                                (-(teach_logp + teach_entropy[idx]) * valid).sum() / count)
+                            mode = torch.stack([h.argmax(-1) for h in split_heads(
+                                logits, self.space.head_sizes)], -1)
+                            stats["kick_agree_mode"].append(
+                                ((mode == teach_t[idx]).all(-1).float() * valid).sum() / count)
+                    kick_ce = -(teach_logp * valid).sum() / count
                     loss = loss + kick_coef * kick_ce
                     with torch.no_grad():
                         stats["kick_ce"].append(kick_ce.detach())
@@ -662,11 +753,16 @@ class Trainer:
                     self.dispatch(pipes)
                 merge_start = time.perf_counter()
                 batch = merge_results(results, self.recurrent)
+                for r in results:  # the merged batch holds copies; drop the per-worker arrays
+                    for key in [k for k, v in r.items() if isinstance(v, np.ndarray)]:
+                        del r[key]
                 merge_s = time.perf_counter() - merge_start
                 stats = [s for r in results for s in r["stats"]]
                 batch["won"] = np.array([s["result"] == "win" for s in stats])
                 self.record_results(stats)
                 learn = self.ppo_update(batch)
+                del batch
+                self.release_memory()
                 t2 = time.perf_counter()
                 self.update += 1
                 self.samples += learn["samples"]
@@ -700,6 +796,15 @@ class Trainer:
                 proc.join(timeout=5)
                 if proc.is_alive():
                     proc.terminate()
+
+    def release_memory(self):
+        """Free the update's large arrays and the GPU allocator's cached buffers.
+
+        Without this the learner's resident memory grows to ~10 GB over hours (cached
+        GPU blocks on unified memory), which pushes a 16 GB machine into heavy swap."""
+        gc.collect()
+        if self.device.type == "mps":
+            torch.mps.empty_cache()
 
     def dispatch(self, pipes):
         args = self.args
@@ -783,6 +888,10 @@ def main(argv=None):
                    help="gru: decisions of the previous chunk replayed (no gradient) to refresh "
                         "the stored start state under the current weights (-1: 16 for gru)")
     p.add_argument("--critic-hidden", type=int, nargs="+", default=[256, 256])
+    p.add_argument("--team-critic", type=int, default=0,
+                   help="1: MAPPO-style training-only critic over the player's features plus both "
+                        "teammates' (player order; zeros and an alive flag of 0 while dead); a "
+                        "per-player critic checkpoint is widened with zero weights")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--gamma", type=float, default=0.998)
     p.add_argument("--lam", type=float, default=0.95)
@@ -823,7 +932,10 @@ def main(argv=None):
     p.add_argument("--adaptive-mix", type=int, default=0,
                    help="scale scripted opponents' shares by (1 - EMA win rate)^2 + floor")
     p.add_argument("--adaptive-floor", type=float, default=0.2)
-    p.add_argument("--teacher", default="", help="scripted teacher for kickstarting (e.g. relay)")
+    p.add_argument("--teacher", default="",
+                   help="kickstarting teacher: a scripted bot (e.g. relay), or "
+                        "policy:/path/goal_policy.npz to distill a goal-space policy into the "
+                        "bins space with soft per-head targets (ctf/distill.py)")
     p.add_argument("--kick-coef", type=float, default=0.0,
                    help="initial weight of the cross-entropy toward the teacher's labels")
     p.add_argument("--kick-samples", type=float, default=0.0,
