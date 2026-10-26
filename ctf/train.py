@@ -131,6 +131,8 @@ def sequence_logits(actor, x_all, h0, seqs, chunks):
 def merge_results(results, recurrent):
     """Concatenate worker rollouts along the unit axis (stored hidden states re-keyed)."""
     keys = ("obs", "actions", "logp", "rewards", "alive") + (("resets",) if recurrent else ())
+    if "teacher_actions" in results[0]:
+        keys += ("teacher_actions", "teacher_valid")
     batch = {key: np.concatenate([r[key] for r in results], axis=1) for key in keys}
     if recurrent:
         N = batch["alive"].shape[1] * 3
@@ -381,6 +383,14 @@ class Trainer:
         weights["offset"] = self.args.shaping_offset
         return weights
 
+    def kick_coef(self):
+        """Kickstarting weight: linear decay from --kick-coef to 0 over --kick-samples."""
+        if not self.args.teacher or not self.args.kick_coef:
+            return 0.0
+        if not self.args.kick_samples:
+            return self.args.kick_coef
+        return self.args.kick_coef * max(0.0, 1.0 - self.samples / self.args.kick_samples)
+
     def entropy_coef(self):
         frac = self.progress_fraction()
         return self.args.ent_coef * (1.0 - frac) + self.args.ent_final * frac
@@ -508,11 +518,19 @@ class Trainer:
         act_t = torch.as_tensor(batch["actions"].reshape(T * E * 3, 3)[flat_index].astype(np.int64),
                                 device=self.device)
         old_logp = torch.as_tensor(batch["logp"].reshape(-1)[flat_index], device=self.device)
+        kick_coef = self.kick_coef() if "teacher_actions" in batch else 0.0
+        if kick_coef:
+            teach_t = torch.as_tensor(
+                batch["teacher_actions"].reshape(T * E * 3, 3)[flat_index].astype(np.int64),
+                device=self.device)
+            teach_valid = torch.as_tensor(
+                batch["teacher_valid"].reshape(-1)[flat_index].astype(np.float32), device=self.device)
 
         n = len(flat_index)
         lap("gae_s")
         ent_coef = self.entropy_coef()
-        stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": []}
+        stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": [],
+                 "kick_ce": [], "kick_agree": []}
         extra = {}
         if self.recurrent:
             seqs = build_sequences(alive, batch["resets"].reshape(T, E * 3), batch["h0_key"],
@@ -544,6 +562,18 @@ class Trainer:
                     loss = args.vf_coef * v_loss
                 else:
                     loss = pi_loss + args.vf_coef * v_loss - ent_coef * entropy.mean()
+                    if kick_coef:
+                        # Kickstarting: cross-entropy toward the shadow teacher's labels on
+                        # the states the student visits (DAgger-style), annealed to zero.
+                        valid = teach_valid[idx]
+                        teach_logp, _ = log_prob_entropy(logits, teach_t[idx])
+                        kick_ce = -(teach_logp * valid).sum() / valid.sum().clamp(min=1.0)
+                        loss = loss + kick_coef * kick_ce
+                        with torch.no_grad():
+                            stats["kick_ce"].append(kick_ce.detach())
+                            stats["kick_agree"].append(((act_t[idx] == teach_t[idx]).all(-1)
+                                                        .float() * valid).sum()
+                                                       / valid.sum().clamp(min=1.0))
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -563,7 +593,7 @@ class Trainer:
                for k, v in stats.items()}
         out.update({"timing": timing, "explained_var": float(explained), "samples": int(n),
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
-                    "actor_stopped": actor_stopped,
+                    "actor_stopped": actor_stopped, "kick_coef": kick_coef,
                     "win_value_mean": float(heads[:, 1].mean()),
                     "adv_raw_std": float(adv.std()), **extra})
         return out
@@ -664,6 +694,7 @@ class Trainer:
         weights = actor_to_numpy(self.actor)
         mean, std = self.norm.mean.astype(np.float32), self.norm.std.astype(np.float32)
         config = {"reward_weights": self.reward_weights(), "max_ticks": args.max_ticks,
+                  "teacher": args.teacher if self.kick_coef() > 0 else None,
                   "memory_wipe_prob": args.memory_wipe,
                   "hidden_every": hidden_every(args.chunk, args.burn_in)}
         for pipe in pipes:
@@ -776,6 +807,11 @@ def main(argv=None):
     p.add_argument("--adaptive-mix", type=int, default=0,
                    help="scale scripted opponents' shares by (1 - EMA win rate)^2 + floor")
     p.add_argument("--adaptive-floor", type=float, default=0.2)
+    p.add_argument("--teacher", default="", help="scripted teacher for kickstarting (e.g. relay)")
+    p.add_argument("--kick-coef", type=float, default=0.0,
+                   help="initial weight of the cross-entropy toward the teacher's labels")
+    p.add_argument("--kick-samples", type=float, default=0.0,
+                   help="learner samples over which the kickstarting weight decays to zero")
     p.add_argument("--pool-greedy", type=float, default=0.8,
                    help="probability that a frozen pool opponent decodes greedily")
     p.add_argument("--pool-size", type=int, default=20, help="own snapshots kept in the league")

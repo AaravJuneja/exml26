@@ -20,7 +20,7 @@ import numpy as np
 
 from ctf import features as F
 from ctf.npnets import PolicyMemories, make_actor, memory_is_fresh, rows_to_float32
-from ctf.policies import ScriptedTeam
+from ctf.policies import SCRIPTED, ScriptedTeam, _silent, load_decide
 from ctf.policy_io import load_policy
 from ctf.rewards import COMPONENTS, RewardTracker
 from ctf.sim import DOCUMENTED_KEYS, Match
@@ -67,11 +67,46 @@ def make_opponent(spec, sphere_ids, rng, current=None):
     return ScriptedTeam(spec, sphere_ids)
 
 
-def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, hidden_every=0):
+def _nearest_index(table, value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        value = 0.0
+    value = -1.0 if value < -1.0 else 1.0 if value > 1.0 else value
+    best, best_d = 0, abs(table[0] - value)
+    for i in range(1, len(table)):
+        d = abs(table[i] - value)
+        if d < best_d:
+            best, best_d = i, d
+    return best
+
+
+def _silenced(decide):
+    decide.__globals__["print"] = _silent
+    return decide
+
+
+def teacher_label(decide, observation):
+    """A scripted teacher's action for this documented observation, as bin indices."""
+    try:
+        action = decide(observation)
+        return (_nearest_index(F.THROTTLE_VALUES, action[0]),
+                _nearest_index(F.TURN_VALUES, action[1]), 1 if action[2] else 0)
+    except Exception:
+        return None
+
+
+def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, hidden_every=0,
+            teacher=None):
     """Play every job to completion. jobs: [{'seed', 'side', 'opponent'}].
 
     Opponent 'mirror' means the current policy plays both teams and both teams are
     learners: that job yields two learner units sharing one match.
+
+    With `teacher` (a scripted bot name or path), every learner player has its own
+    shadow instance of the teacher, which sees the same documented observation and
+    labels the action it would take (rounded to the action bins): `teacher_actions`
+    [T, units, 3, 3] and `teacher_valid` [T, units, 3]. The teacher never acts.
 
     For a recurrent actor the result also has `resets` [T, units, 3] (hidden state
     zeroed before this decision) and the stored states `h0` [K, H] with their
@@ -106,6 +141,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 "wipes": [int(rng.integers(1, T)) if rng.random() < memory_wipe_prob else -1
                           for _ in mine],
                 "job": dict(job, side="red" if team == red else "blue"),
+                "teachers": ([_silenced(load_decide(SCRIPTED.get(teacher, teacher)))
+                              for _ in mine] if teacher else None),
             })
 
     n_unit = len(units)
@@ -114,6 +151,9 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     logp = np.zeros((T, n_unit, 3), dtype=np.float32)
     rewards = np.zeros((T, n_unit, 3), dtype=np.float32)
     alive = np.zeros((T, n_unit, 3), dtype=bool)
+    if teacher:
+        teacher_actions = np.zeros((T, n_unit, 3, 3), dtype=np.int8)
+        teacher_valid = np.zeros((T, n_unit, 3), dtype=bool)
     recurrent = actor.recurrent
     if recurrent:
         if hidden_every < 1:
@@ -145,7 +185,13 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                     if since_reset[u, k] % hidden_every == 0:
                         stored.append((t, u, k, hidden[u, k].copy()))
                     since_reset[u, k] += 1
-                rows.append(F.encode(documented(observation), unit["memories"][k]))
+                doc = documented(observation)
+                rows.append(F.encode(doc, unit["memories"][k]))
+                if teacher:
+                    label = teacher_label(unit["teachers"][k], doc)
+                    if label is not None:
+                        teacher_actions[t, u, k] = label
+                        teacher_valid[t, u, k] = True
                 unit_index.append(u)
                 slot_index.append(k)
         step_actions = [dict() for _ in matches]
@@ -195,6 +241,9 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
         "obs": obs, "actions": actions, "logp": logp, "rewards": rewards, "alive": alive,
         "stats": stats, "seconds": time.perf_counter() - started, "ticks": T * len(matches),
     }
+    if teacher:
+        out["teacher_actions"] = teacher_actions
+        out["teacher_valid"] = teacher_valid
     if recurrent:
         out["resets"] = resets
         out["h0_t"] = np.array([s[0] for s in stored], dtype=np.int64)
@@ -222,7 +271,7 @@ def worker_main(conn, worker_id):
             actor = make_actor(weights, mean, std)
             data = collect(actor, jobs, config["reward_weights"], config["max_ticks"],
                            config["seed"], config.get("memory_wipe_prob", 0.0),
-                           config.get("hidden_every", 0))
+                           config.get("hidden_every", 0), config.get("teacher"))
         except Exception:
             data = {"error": traceback.format_exc()}
         try:

@@ -172,3 +172,28 @@ def test_v3_to_v4_migration_preserves_action_distribution():
         merged[:, i] += p_new[:, j]
     assert torch.allclose(merged, p_old, atol=1e-5)
     assert torch.allclose(logits_old[:, 12:], logits_new[:, n_throttle:], atol=1e-5)
+
+
+def test_kickstarting_smoke(tmp_path):
+    main(["--name", "kick", "--runs", str(tmp_path), "--workers", "2", "--envs", "1",
+          "--max-ticks", "200", "--updates", "2", "--minibatch", "256", "--learner-threads", "2",
+          "--opponents", "baseline:1,mirror:1", "--teacher", "relay", "--kick-coef", "1.0",
+          "--kick-samples", "1e9"])
+    records = [json.loads(line) for line in (tmp_path / "kick" / "log.jsonl").read_text().splitlines()]
+    assert all(r["kick_coef"] > 0 and r["kick_ce"] > 0 for r in records)
+    assert all(0.0 <= r["kick_agree"] <= 1.0 for r in records)
+
+
+def test_teacher_labels_cover_alive_players():
+    from ctf.npnets import NumpyActor
+    from ctf.rollout import collect
+    from ctf import features as F
+    import torch
+    from ctf.nets import Actor, actor_to_numpy
+
+    torch.manual_seed(0)
+    actor = NumpyActor(actor_to_numpy(Actor((16, 16))), np.zeros(F.FEATURE_DIM), np.ones(F.FEATURE_DIM))
+    data = collect(actor, [{"seed": 9, "side": "red", "opponent": "relay"}], {}, 150, 0,
+                   teacher="relay")
+    assert data["teacher_valid"].sum() == data["alive"].sum()
+    assert data["teacher_actions"][data["teacher_valid"]].max() < F.N_THROTTLE
