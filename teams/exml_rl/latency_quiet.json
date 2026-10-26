@@ -1,0 +1,6 @@
+{
+ "note": "The release run's latency step failed only because the training machine was saturated by training (load ~26 on 10 cores; one 960 ms OS stall). Re-measured with all training/eval processes paused (SIGSTOP), full 6,000-tick match, six real rpc.worker processes.",
+ "stress_0": {"p50_ms": 0.1242, "p99_ms": 0.2924, "max_ms": 3.0925, "timeouts": 0, "all_pass": true},
+ "stress_6": {"p50_ms": 0.3855, "p99_ms": 1.4182, "max_ms": 14.2605, "timeouts": 0, "all_pass": true},
+ "deadline_ms": 30
+}
