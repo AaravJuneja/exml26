@@ -65,7 +65,8 @@ Working log. The summary is `docs/tracker.html`.
 | Capacity: Net2Wider 256×256 (m3e-c vs m3e-a) | About equal over 300 updates (C slightly better vs balanced/camper). Adopted 256×256 as the mainline (cheap at inference). |
 | Defence potential 0.3 (m3e-d vs m3e-c, from the same checkpoint) | Training relay goal difference: D −5.4 → −4.7 vs C −5.2 → −6.1. Held-out about equal or slightly better. Kept, gated off for our own carrier. |
 | v4 bundle; entropy/λ A/B (m4a: 0.003/0.95 vs m4b: 0.0005/0.99) | **m4b better**. Training at updates 161–222: baseline 100%, rusher 43%, balanced −3.6 (m4a: 83%, 24%, −4.7). Held-out: guardian/rusher/camper 33–44% (m4a 25–33%). Relay about equal. |
-| m4c: entropy 0.0001, λ 0.995 (from m4b u222) vs m4b | running |
+| m4c: entropy 0.0001, λ 0.995 (from m4b u222) vs m4b | **m4c slightly better**: held-out guardian/rusher/camper 48–56% vs 40–52%; relay/balanced similar (6–19%) |
+| v5 features (m5a, from m4c u~205) vs m4c | running |
 | Release pipeline (`tools/release.py`) | Candidate m4a u70: audit/parity/latency PASS (p99 1.43 ms, max 5.6 ms; stress p99 1.2, max 10.2). Gauntlet seeds 5000–5031: 41% overall |
 
 ## Strategy review (summary)

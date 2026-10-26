@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3\u2192M4 transition.</b> The policy beats baseline about 90% and the mid-strength bots 15-35%, but relay and balanced are still about 5-15%.<br><br>A strategy review identified <b>coordination and control</b> as the gap: in the relay replay only 58% of our pickups became captures, against 82% for relay. Changes made:<ul><li><b>Features v4:</b> which teammate carries, teammate respawn countdowns, enemies near our home, closing speed on our stolen flag, and how long the enemy flag has sat at home</li><li>symmetric fine throttle bins</li><li>a defence reward potential, which beat the control slightly vs relay</li><li>a focused curriculum: relay and balanced 25% each, plus a <b>league pool</b> of the run's own past snapshots</li></ul><b>A/B result:</b> low entropy (0.0005) with \u03bb 0.99 (<b>m4b</b>) beats m4a. In training, m4b reached baseline 100%, rusher 43% and balanced \u22123.6 goal difference; held-out it beats guardian, rusher and camper 33-44%. Next arm: m4c pushes further (entropy 0.0001, \u03bb 0.995).<br><br><b>Release pipeline ready (M6 tooling):</b> one command exports, audits, checks deployed-file parity, runs the 6-worker latency test (p99 ~1.4 ms) and the held-out gauntlet. The first candidate (an early m4a snapshot) passed every check, with a 41% overall win rate across the 10 bots.",
+ "summary": "<b>Steady progress.</b> The best line (<b>m4c</b>: v4 features, 256\u00d7256, entropy 0.0001, \u03bb 0.995, focused league curriculum) now beats, on held-out maps:<ul><li><b>baseline 94-96%</b></li><li>guardian / rusher / camper <b>~48-56%</b>, up from 15-35% earlier</li><li>relay ~6-15% and balanced ~8-17%, with goal difference narrowing to about -3</li></ul>The review of the v5 migration found real risks, now fixed: policy files are never auto-migrated (strict loading), and lossy migrations are refused. <b>A/B now:</b> m5a (v5 memory features) vs m4c (v4). In progress: releasing m4c's best snapshot as <code>teams/exml_rl</code> via the full release pipeline.",
  "milestones": [
   {
    "id": "M0",
@@ -114,19 +114,19 @@
  ],
  "runs": [
   {
-   "name": "m4b",
-   "state": "running",
-   "description": "Current best line: v4, 256x256, defence 0.3, focused league curriculum, entropy 0.0005, \u03bb 0.99."
-  },
-  {
    "name": "m4c",
    "state": "running",
-   "description": "Branch of m4b at u222: entropy 0.0001, \u03bb 0.995."
+   "description": "Best line: v4, 256x256, entropy 0.0001, \u03bb 0.995, defence 0.3, relay/balanced 25% each + league pool 15% + mirror 10%."
   },
   {
-   "name": "m4a",
+   "name": "m5a",
+   "state": "running",
+   "description": "v5 features (trail, stuck, bump normal, collision timing, carrier escape), warm-started from m4c u~205."
+  },
+  {
+   "name": "m4b",
    "state": "stopped",
-   "description": "Entropy 0.003, \u03bb 0.95: worse than m4b."
+   "description": "Entropy 0.0005, \u03bb 0.99 (beat m4a; slightly below m4c)."
   }
  ],
  "updates": [
@@ -173,6 +173,10 @@
   {
    "time": "2026-10-26 10:00",
    "text": "m4b (low entropy, \u03bb 0.99) wins the A/B. Release pipeline built; first candidate passes all checks. Feature registry + v5 memory features in progress."
+  },
+  {
+   "time": "2026-10-26 12:00",
+   "text": "m4c (lower entropy, higher \u03bb) slightly beats m4b: guardian/rusher/camper ~50% held-out. v5 features + strict migration done (reviewed). A/B v5 vs v4 running. Releasing m4c as teams/exml_rl."
   }
  ]
 }
