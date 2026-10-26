@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3 in progress.</b> Against held-out maps, the M3 policy (m3b) went from 3% to <b>44% wins vs baseline</b> in about 150 updates, but scored only 6% vs relay and 0% vs balanced (both score ~11 per match).<br><br>A replay analysis showed why: relay's players average 11-13 u/s, above lethal speed over half the time, because they remember ground they have already crossed. Ours averaged about 6 u/s, lost every race, and died 13 times in collisions (the slower sphere dies).<br><br><b>Fix (features v2):</b> each player now keeps a <i>known-clear ground map</i>, built from its own path, enemies it has seen, flag carriers and the home areas, with bumps marked as blocked. From the map it gets 8 body-relative ray distances plus a velocity ray, so the network can learn when sprinting is safe. Run <b>m3c</b> warm-starts from m3b via feature surgery: the new inputs start with zero weight, so the policy starts out identical to m3b.<br><br>Also new:<ul><li>an optional GRU recurrent policy (built and tested; under review)</li><li>each training job now runs from its own frozen copy of the code</li></ul>",
+ "summary": "<b>M3 in progress, run m3d.</b> The clear-ground features (v2) lifted held-out wins vs baseline from <b>44% to 78%</b> (m3c, snapshot u50). The strong scripted bots (relay, balanced, ~11 goals per match) are still mostly unbeaten, at 3-9%.<br><br>The review of the new features found real false-safety issues, now fixed:<ul><li>rays could slip diagonally past blocked cells; they now use exact grid traversal</li><li>airborne or ramp positions were counted as clear ground; now only grounded, ground-level positions count</li><li>nearby bumps didn't block their own cells; they now do</li></ul>Throughput:<ul><li>the learner moved to the GPU, ~10\u00d7 faster per step</li><li>rollouts are now pipelined with updates</li><li>result: 17k \u2192 ~27k ticks/s, about 290M learner samples per hour</li></ul>",
  "milestones": [
   {
    "id": "M0",
@@ -23,7 +23,7 @@
    "id": "M3",
    "title": "Beat scripted pool (\u226590% wins vs provided bots)",
    "state": "active",
-   "note": "m3b: 44% vs baseline held-out; m3c (features v2 clear-ground map) running"
+   "note": "m3c: 78% vs baseline held-out (u50); m3d continuing with fixed features + faster learner"
   },
   {
    "id": "M4",
@@ -93,19 +93,19 @@
  ],
  "runs": [
   {
-   "name": "m3c",
+   "name": "m3d",
    "state": "running",
-   "description": "Features v2 (clear-ground rays), warm-started from m3b via feature surgery. Same opponent mix."
+   "description": "Features v3 (fixed rays), resumed from m3c weights; GPU learner + pipelined rollouts. Opponent mix as before."
+  },
+  {
+   "name": "m3c",
+   "state": "stopped",
+   "description": "Features v2 warm-started from m3b; 78% vs baseline at u50."
   },
   {
    "name": "m3b",
    "state": "stopped",
-   "description": "M3 with features v1, from M2 weights; 44% vs baseline held-out at u150."
-  },
-  {
-   "name": "m2e",
-   "state": "done",
-   "description": "M2: PPO from scratch vs idle opponents (passed the gate at 150M samples)."
+   "description": "M3 with features v1; 44% vs baseline held-out at u150."
   }
  ],
  "updates": [
@@ -128,6 +128,10 @@
   {
    "time": "2026-10-26 02:20",
    "text": "Replay analysis: our players far slower than scripted bots. Added a clear-ground memory map and ray inputs (features v2) with warm-start surgery; m3c running. GRU option built."
+  },
+  {
+   "time": "2026-10-26 03:30",
+   "text": "Features v2 (clear-ground rays) lifted baseline win rate 44%\u219278%. Review fixes (exact ray traversal etc.). Learner moved to GPU + pipelining: ~290M samples/h. m3d running."
   }
  ]
 }
