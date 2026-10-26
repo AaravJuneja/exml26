@@ -206,8 +206,8 @@ def widen_mlp(weights, new_hidden, rng, noise=1e-4):
         if target == old:
             continue
         mapping = torch.cat([torch.arange(old),
-                             torch.as_tensor(rng.integers(0, old, target - old))])
-        counts = torch.bincount(mapping, minlength=old).to(w_out.dtype)
+                             torch.as_tensor(rng.integers(0, old, target - old))]).to(w_in.device)
+        counts = torch.bincount(mapping, minlength=old).to(dtype=w_out.dtype, device=w_out.device)
         new_w_in = w_in[mapping].clone()
         new_w_in[old:] += noise * torch.randn_like(new_w_in[old:])
         out[f"net.{layer}.weight"] = new_w_in
