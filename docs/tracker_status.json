@@ -205,6 +205,10 @@
   {
    "time": "2026-10-27 01:00",
    "text": "Relay progress flattening (~28%). Launched breakthrough work (relay-loss diagnosis, team-aware critic, targeted rewards) alongside b1 and the distillation track."
+  },
+  {
+   "time": "2026-10-27 05:00",
+   "text": "Memory leak fixed (b1 ~10 GB \u2192 <2 GB). Sweep of b1 snapshots: peak around u1120\u2013u1600, then wall-death drift. Both releases now PASS (pure latency re-measured). training-machine work stops 06:25 IST; laptop-only afterwards."
   }
  ]
 }
