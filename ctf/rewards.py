@@ -5,9 +5,13 @@ own state (dead players use their spawn point, the first position they ever
 observed), flag records with carrier ids, observed flag homes, and death
 messages. Simulator objects are read only because they hold exactly those values.
 
-Shaping is exactly potential-based, F = gamma * Phi(after) - Phi(before), applied
-on every tick (deaths, respawns and captures included) with Phi = 0 at the end of
-the match, so it cannot change which policy is optimal; it only densifies credit.
+Shaping is F = g * Phi(after) - Phi(before) on every tick (deaths, respawns and
+captures included) with Phi = 0 at the end of the match. With g equal to the
+trainer's discount this is exact PBRS (optimal policy unchanged). The default
+g = 1 (undiscounted differences) avoids the per-tick idle bonus that a negative
+potential produces under discounting, at the cost of a small deliberate bias
+(1 - gamma) * Phi(s') toward earlier progress; anneal it. An `offset` (in route
+units) shifts the potential so exact PBRS can be used without the idle bonus.
 The potential is minus the remaining route length for the player:
   * carrying the enemy flag: distance to own home;
   * a teammate carries it: the public flag position's distance to own home;
@@ -55,6 +59,7 @@ class RewardTracker:
         flag = self.enemy_flag
         carrier = flag.carrier
         scale = -self.weights["shaping"] / 180.0
+        offset = self.weights.get("offset", 0.0)
         out = []
         for k, sphere in enumerate(self.spheres):
             x, y = (sphere.x, sphere.y) if sphere.alive else self.spawns[k]
@@ -65,7 +70,7 @@ class RewardTracker:
                     route = math.hypot(flag.x - hx, flag.y - hy)
             else:
                 route = math.hypot(x - flag.x, y - flag.y) + math.hypot(flag.x - hx, flag.y - hy)
-            out.append(scale * route)
+            out.append(scale * (route - offset))
         return out
 
     def before(self):

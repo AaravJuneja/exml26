@@ -79,6 +79,7 @@ class Trainer:
         self.ret_norm = RunningNorm(1)
         self.update = 0
         self.samples = 0
+        self.norm_frozen = False
         self.mix = parse_mix(args.opponents)
         self.opp_winrate = {}  # opponent spec -> EMA of learner win rate (PFSP difficulty)
         ckpt = self.run_dir / "checkpoint.pt"
@@ -93,7 +94,7 @@ class Trainer:
             "actor": self.actor.state_dict(), "critic": self.critic.state_dict(),
             "optimizer": self.optimizer.state_dict(), "norm": self.norm.state(),
             "ret_norm": self.ret_norm.state(), "update": self.update, "samples": self.samples,
-            "opp_winrate": self.opp_winrate,
+            "opp_winrate": self.opp_winrate, "norm_frozen": self.norm_frozen,
             "np_rng": self.rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
             "args": vars(self.args),
         }
@@ -109,6 +110,7 @@ class Trainer:
         self.critic.load_state_dict(state["critic"])
         self.norm.load(state["norm"])
         self.ret_norm.load(state["ret_norm"])
+        self.norm_frozen = state.get("norm_frozen", state["update"] >= self.args.norm_updates)
         if not weights_only:
             self.optimizer.load_state_dict(state["optimizer"])
             self.update, self.samples = state["update"], state["samples"]
@@ -133,6 +135,7 @@ class Trainer:
         frac = self.progress_fraction()
         weights["shaping"] *= (1.0 - frac) + frac * self.args.progress_final
         weights["gamma"] = self.args.shaping_gamma
+        weights["offset"] = self.args.shaping_offset
         return weights
 
     def entropy_coef(self):
@@ -215,8 +218,10 @@ class Trainer:
         win_rewards = np.zeros((T, E * 3), dtype=np.float32)
         win_rewards[-1] = np.repeat(batch["won"].astype(np.float32), 3)
         win_adv = gae(win_rewards, win_values, alive, 1.0, args.win_lam)
-        win_returns = (win_adv + win_values).reshape(-1)[flat_index]
         win_adv = win_adv.reshape(-1)[flat_index]
+        # The win head regresses on the actual outcome of each learner unit's match.
+        win_returns = np.repeat(batch["won"].astype(np.float64), 3)[None, :].repeat(T, 0)
+        win_returns = win_returns.reshape(-1)[flat_index]
         explained = 1.0 - np.var(returns - v_raw) / (np.var(returns) + 1e-8)
         old_mean, old_std = float(self.ret_norm.mean[0]), float(self.ret_norm.std[0])
         self.ret_norm.update(returns.reshape(-1, 1))
@@ -236,7 +241,7 @@ class Trainer:
         n = len(flat_index)
         ent_coef = self.entropy_coef()
         stats = {"pi_loss": [], "v_loss": [], "entropy": [], "kl": [], "clipfrac": []}
-        stop = False
+        actor_stopped = False
         for _epoch in range(args.epochs):
             perm = torch.randperm(n, device=self.device)
             for start in range(0, n, args.minibatch):
@@ -247,15 +252,17 @@ class Trainer:
                 with torch.no_grad():
                     kl = ((ratio - 1) - (logp - old_logp[idx])).mean().item()
                 if args.target_kl and kl > 1.5 * args.target_kl:
-                    stop = True
-                    break
+                    actor_stopped = True
                 surrogate = torch.min(ratio * adv_t[idx],
                                       torch.clamp(ratio, 1 - args.clip, 1 + args.clip) * adv_t[idx])
                 pi_loss = -surrogate.mean()
                 out = self.critic(x_all[idx])
                 v_loss = 0.5 * (out[:, 0] - ret_t[idx]).pow(2).mean()
                 v_loss = v_loss + 0.5 * (out[:, 1] - win_t[idx]).pow(2).mean()
-                loss = pi_loss + args.vf_coef * v_loss - ent_coef * entropy.mean()
+                if actor_stopped:  # past the trust region: keep fitting the critic only
+                    loss = args.vf_coef * v_loss
+                else:
+                    loss = pi_loss + args.vf_coef * v_loss - ent_coef * entropy.mean()
                 self.optimizer.zero_grad(set_to_none=True)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(
@@ -266,13 +273,13 @@ class Trainer:
                 stats["entropy"].append(entropy.mean().item())
                 stats["kl"].append(kl)
                 stats["clipfrac"].append(((ratio - 1).abs() > args.clip).float().mean().item())
-            if stop:
-                break
-        if self.update < args.norm_updates:
+        if not self.norm_frozen:
             self.norm.update(raw.reshape(T * E * 3, -1)[flat_index][:: args.norm_stride])
+            self.norm_frozen = self.update + 1 >= args.norm_updates
         out = {k: float(np.mean(v)) if v else 0.0 for k, v in stats.items()}
         out.update({"explained_var": float(explained), "samples": int(n),
                     "minibatches": len(stats["kl"]), "ent_coef": ent_coef,
+                    "actor_stopped": actor_stopped,
                     "win_value_mean": float(heads[:, 1].mean()),
                     "adv_raw_std": float(adv.std())})
         return out
@@ -406,7 +413,11 @@ def main(argv=None):
     p.add_argument("--anneal-samples", type=float, default=0.0)
     p.add_argument("--win-coef", type=float, default=0.0,
                    help="weight of the undiscounted win advantage added to the PPO advantage")
-    p.add_argument("--win-lam", type=float, default=0.995)
+    p.add_argument("--win-lam", type=float, default=1.0)
+    p.add_argument("--shaping-offset", type=float, default=0.0,
+                   help="constant added to the potential, in route units (e.g. 360 with "
+                        "--shaping-gamma equal to --gamma gives exactly invariant shaping "
+                        "without an idle bonus)")
     p.add_argument("--shaping-gamma", type=float, default=1.0,
                    help="discount inside the shaping term; 1.0 avoids a per-tick bonus for idling "
                         "far from the objective (negative potentials)")
