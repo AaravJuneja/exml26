@@ -161,16 +161,23 @@ def expand_features(state, old_dim):
     index = torch.as_tensor(feature_index_map(old_dim))
     new_dim = F.FEATURE_DIM
 
-    def widen(tensor):
-        if tensor.dim() == 2 and tensor.shape[1] == old_dim:
-            wide = torch.zeros(tensor.shape[0], new_dim, dtype=tensor.dtype)
-            wide[:, index] = tensor
-            return wide
-        return tensor
+    def widen_input_layer(weights):
+        """Widen only the first matrix that reads the features (the input layer)."""
+        out, done = {}, False
+        for name, tensor in weights.items():
+            if not done and tensor.dim() == 2 and tensor.shape[1] == old_dim:
+                wide = tensor.new_zeros(tensor.shape[0], new_dim)
+                wide[:, index] = tensor
+                out[name], done = wide, True
+            else:
+                out[name] = tensor
+        if weights and not done:
+            raise ValueError("no input layer with the old feature width found")
+        return out
 
     state = dict(state)
     for key in ("actor", "critic"):
-        state[key] = {name: widen(t) for name, t in state[key].items()}
+        state[key] = widen_input_layer(state[key])
     norm = dict(state["norm"])
     mean, var = np.zeros(new_dim), np.ones(new_dim)
     mean[index.numpy()] = norm["mean"]

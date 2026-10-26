@@ -127,16 +127,43 @@ class PlayerMemory:
                     self.mark_free(home[0] + i * CELL, home[1] + j * CELL)
 
     def ray(self, x, y, dx, dy):
-        """Known-clear distance along unit direction (dx, dy); flag if it ended at a block."""
-        d = 1.0
-        while d <= RAY_RANGE:
-            index = self._cell(x + dx * d, y + dy * d)
-            if index < 0:
-                return d - 1.0, 1.0
-            state = self.grid[index]
+        """Known-clear distance along unit direction (dx, dy) and whether it ended at a block.
+
+        Exact grid traversal (Amanatides & Woo): every cell the ray crosses is checked,
+        so a diagonal ray cannot slip past a blocked cell through its corner.
+        """
+        gx, gy = x / CELL + 0.5, y / CELL + 0.5  # cell (i, j) spans [i, i+1) here
+        ix, iy = int(math.floor(gx)), int(math.floor(gy))
+        step_x = 1 if dx > 0 else -1
+        step_y = 1 if dy > 0 else -1
+        inv = 1.0 / CELL
+        if abs(dx) > 1e-12:
+            t_dx = inv / abs(dx)
+            t_x = ((ix + 1 - gx) if dx > 0 else (gx - ix)) * CELL / abs(dx)
+        else:
+            t_dx = t_x = float("inf")
+        if abs(dy) > 1e-12:
+            t_dy = inv / abs(dy)
+            t_y = ((iy + 1 - gy) if dy > 0 else (gy - iy)) * CELL / abs(dy)
+        else:
+            t_dy = t_y = float("inf")
+        t_dx, t_dy = t_dx * CELL * CELL, t_dy * CELL * CELL
+        t = 0.0
+        while t < RAY_RANGE:
+            cx, cy = ix + GRID_HALF, iy + GRID_HALF
+            if not (0 <= cx < GRID and 0 <= cy < GRID):
+                return t, 1.0
+            state = self.grid[cy * GRID + cx]
             if state != FREE:
-                return d - 1.0, 1.0 if state == BLOCKED else 0.0
-            d += 1.0
+                return t, 1.0 if state == BLOCKED else 0.0
+            if t_x < t_y:
+                t = t_x
+                t_x += t_dx
+                ix += step_x
+            else:
+                t = t_y
+                t_y += t_dy
+                iy += step_y
         return RAY_RANGE, 0.0
 
     # ----------------------------------------------------------------- updates
@@ -147,11 +174,11 @@ class PlayerMemory:
             for home in (self.own_home, self.enemy_home):
                 if home is not None and (home[0] - x) ** 2 + (home[1] - y) ** 2 < HOME_CLEAR ** 2:
                     return
+        self.mark_blocked(x, y)
         for bx, by in self.bumps:
             if (bx - x) ** 2 + (by - y) ** 2 < 2.25:
                 return
         self.bumps.append((x, y))
-        self.mark_blocked(x, y)
         if len(self.bumps) > BUMP_CAPACITY:
             del self.bumps[0]
 
@@ -214,14 +241,16 @@ class PlayerMemory:
         self.prev_own_flag = (fx, fy, carrier)
 
         # Ground known to be clear: where this player, seen enemies and flag carriers have been.
-        self.mark_free(x, y)
+        # Only grounded, ground-level positions count (not airborne, not on ramps).
+        if me.get("grounded") and _num(me.get("z"), 1.0) < 1.05:
+            self.mark_free(x, y)
         if carrier != -1 and self.flag_streak >= 2:
             self.mark_free(fx, fy)
         for flag in observation.get("other_flags") or ():
             if flag.get("carried_by", -1) not in (-1, me.get("id")):
                 self.mark_free(_num(flag.get("x")), _num(flag.get("y")))
         for enemy in observation.get("visible_enemies") or ():
-            if _num(enemy.get("z"), 1.0) < 2.0:
+            if enemy.get("grounded") and _num(enemy.get("z"), 1.0) < 1.05:
                 self.mark_free(_num(enemy.get("x")), _num(enemy.get("y")))
 
         for message in observation.get("death_messages") or ():

@@ -137,3 +137,41 @@ def test_encode_is_fast():
         F.encode(observation, memory)
     per_call = (time.perf_counter() - start) / 2000
     assert per_call < 300e-6, per_call
+
+
+def _random_memory(rng):
+    m = F.PlayerMemory()
+    for i in range(-14, 15):
+        for j in range(-14, 15):
+            m.mark_free(i * F.CELL, j * F.CELL)
+    for _ in range(6):
+        m.mark_blocked(rng.uniform(-25, 25), rng.uniform(-25, 25))
+    return m
+
+
+def test_ray_traversal_is_exact():
+    """Rays never cross a non-free cell, and stop exactly at the first one."""
+    import random
+    rng = random.Random(0)
+    for _ in range(1500):
+        m = _random_memory(rng)
+        x, y = rng.uniform(-3, 3), rng.uniform(-3, 3)
+        a = rng.uniform(-math.pi, math.pi)
+        dx, dy = math.sin(a), math.cos(a)
+        d, blocked = m.ray(x, y, dx, dy)
+        k = 0.0
+        while k < d - 1e-6:
+            assert m.grid[m._cell(x + dx * k, y + dy * k)] == F.FREE
+            k += 0.01
+        if d < F.RAY_RANGE:
+            index = m._cell(x + dx * (d + 1e-6), y + dy * (d + 1e-6))
+            assert index < 0 or m.grid[index] != F.FREE
+            assert blocked == (1.0 if index < 0 or m.grid[index] == F.BLOCKED else 0.0)
+
+
+def test_close_bumps_block_their_own_cells():
+    m = F.PlayerMemory()
+    m._add_bump(1.0, 0.0)
+    m._add_bump(1.2, 0.0)  # deduplicated as a point, but in a different cell
+    assert m.grid[m._cell(1.0, 0.0)] == F.BLOCKED
+    assert m.grid[m._cell(1.2, 0.0)] == F.BLOCKED
