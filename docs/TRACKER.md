@@ -88,6 +88,8 @@ Working log. The summary is `docs/tracker.html`.
 | **Paired A/B: release vs b1 u440** (128 games per opponent, seeds 3000–3063, greedy) | b1 is worse vs relay (dGD −0.48, n.s.), balanced (−0.81, n.s.), guardian (**−1.15**), rusher (**−0.81**) and camper (−0.58, n.s.); **better** vs chaos (+0.97) and steady (+2.25). Behaviour transformed: wall 0.01 vs 1.4 per player; re-pickup 16–73 vs 128–142 ticks (waiter learned). Still mid-imitation (kick 0.31). |
 | Goal-space decoding (b1 u440, 32 seeds) | Sampled is slightly better than greedy: guardian GD −0.31 vs −1.28; rusher +0.12 vs −0.73; relay −3.77 vs −4.19. Decide at release time. |
 | b1 resumed at u~470 with a league mix (pool 12%, mirror 10%, stronger scripted share, no idle) | running |
+| **Paired A/B: release vs b1 u820** (128 games per opponent) | Sampled: relay **+0.89** [+0.05, +1.75], balanced **+1.15**, guardian **+1.41**, rusher **+0.84** (all CIs > 0). Greedy also positive but smaller → sampled decoding for plan B. |
+| **Release teams/exml_rl = b1 u960 (sampled)** | PASS. Held-out 640 games: **72% wins** (baseline/example/example2 100%, steady 95%, rusher 73%, chaos 72%, camper 66%, guardian 63%, relay 28%, balanced 25%); wall ~0.1 per player; latency p99 0.37 ms (training paused). Old pure-RL release kept as teams/exml_rl_pure (54%). |
 | g1 generalist league (old space) | Flat after 112M samples (relay 17%, guardian 31%). Stopped. |
 | g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |
 | _(old note)_ Support potential Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |

@@ -10,11 +10,16 @@ release report.
 
 ## Submission
 
-[`teams/exml_rl/model.py`](teams/exml_rl/model.py) is the current release:
-one stdlib + numpy file exposing `decide(observation)`. Its audit, deployed-file
-parity, latency and held-out gauntlet results are in
-[`teams/exml_rl/release_report.json`](teams/exml_rl/release_report.json) and
-[`docs/RELEASE.md`](docs/RELEASE.md).
+Two releases, each one stdlib + numpy file exposing `decide(observation)`:
+
+| Release | Architecture | Held-out (640 games) |
+|---|---|---|
+| [`teams/exml_rl/model.py`](teams/exml_rl/model.py) (**main**) | Learned desired-velocity policy: the PPO network chooses heading, speed and jump every tick; a deterministic physics actuator (`ctf/controller.py`, inlined) turns that into throttle/turn. Kickstarted from a scripted teacher, then RL with a self-play league. Sampled decoding. | **72% wins** (baseline/example 100%, guardian 63%, rusher 73%, relay 28%) |
+| [`teams/exml_rl_pure/model.py`](teams/exml_rl_pure/model.py) | Pure end-to-end PPO network outputting throttle/turn/jump directly. Greedy decoding. | 54% wins |
+
+Audit, deployed-file parity, latency and gauntlet results are in each folder's
+`release_report.json`. A distilled pure end-to-end version of the main policy is in
+progress.
 
 ## Layout
 
