@@ -1,5 +1,5 @@
 {
- "summary": "<b>M3 in progress, run m3d: held-out u300 beats baseline 94%, camper 22%, guardian 16%, rusher 16%; relay 6%, balanced 3%.</b> Against relay on seed 1003 we improved from 2-19 to 7-14; our average speed rose from about 6 to about 8 u/s (relay averages about 11). Work started on optimizing the rollout hot path (exactness-tested) for more training throughput. The clear-ground features (v2) lifted held-out wins vs baseline from <b>44% to 78%</b> (m3c, snapshot u50). The strong scripted bots (relay, balanced, ~11 goals per match) are still mostly unbeaten, at 3-9%.<br><br>The review of the new features found real false-safety issues, now fixed:<ul><li>rays could slip diagonally past blocked cells; they now use exact grid traversal</li><li>airborne or ramp positions were counted as clear ground; now only grounded, ground-level positions count</li><li>nearby bumps didn't block their own cells; they now do</li></ul>Throughput:<ul><li>the learner moved to the GPU, ~10\u00d7 faster per step</li><li>rollouts are now pipelined with updates</li><li>result: 17k \u2192 ~27k ticks/s, about 290M learner samples per hour</li></ul>",
+ "summary": "<b>M3: past baseline, plateaued against the two strongest bots.</b> The policy now beats baseline on 84-97% of held-out maps, and guardian/camper/rusher on 15-28%. Against relay and balanced (~11 goals per match) it has been flat at about 5-15% for ~200M samples.<br><br>Findings:<ul><li><b>Greedy decoding is far stronger than sampling</b> (vs relay 28% vs 6% on fresh seeds), so model.py will use greedy.</li><li>A/B test: a higher learning rate (1e-3) made things <b>worse</b>, so step size isn't the limit.</li></ul>Now testing <b>network capacity</b>: m3e-c widens the actor to 256x256 with function-preserving Net2Wider surgery, against control m3e-a. Next candidate: a <b>defence reward potential</b> (chase our stolen flag), aimed at relay's slow 'waiter' that camps on our flag.",
  "milestones": [
   {
    "id": "M0",
@@ -93,19 +93,24 @@
  ],
  "runs": [
   {
-   "name": "m3d",
+   "name": "m3e-a",
    "state": "running",
-   "description": "Features v3 (fixed rays), resumed from m3c weights; GPU learner + pipelined rollouts. Opponent mix as before."
+   "description": "Control: m3d weights, MLP 128x128, lr 3e-4, fixed entropy 0.003, shaping 0.2, adaptive mix; 5 workers."
   },
   {
-   "name": "m3c",
-   "state": "stopped",
-   "description": "Features v2 warm-started from m3b; 78% vs baseline at u50."
+   "name": "m3e-c",
+   "state": "running",
+   "description": "Capacity test: same as m3e-a but actor widened to 256x256 and critic to 384x384 (Net2Wider); 5 workers."
   },
   {
-   "name": "m3b",
+   "name": "m3e-b",
    "state": "stopped",
-   "description": "M3 with features v1; 44% vs baseline held-out at u150."
+   "description": "lr 1e-3 A/B arm: worse (relay goal difference -5.9 \u2192 -8.4 in training); stopped."
+  },
+  {
+   "name": "m3d",
+   "state": "stopped",
+   "description": "Main M3 run up to u988 (576M samples)."
   }
  ],
  "updates": [
@@ -140,6 +145,10 @@
   {
    "time": "2026-10-26 05:05",
    "text": "Rollouts 1.43x faster (bit-identical, fixture-tested). Adaptive opponent mix on (shifts training toward relay/balanced etc.). m3d u450: baseline 97%, camper 25%, relay 9%, balanced 6%."
+  },
+  {
+   "time": "2026-10-26 06:40",
+   "text": "Plateau vs relay/balanced. Greedy decoding >> sampling. lr 1e-3 A/B worse. Capacity A/B (Net2Wider 256x256) running. Defence potential implemented."
   }
  ]
 }
