@@ -39,7 +39,8 @@ def test_shaping_is_exact_discounted_telescoping():
     match = Match(5, max_ticks=1500)
     tracker = RewardTracker(match, "red", {"gamma": gamma, "score": 0.0, "win": 0.0, "pickup": 0.0,
                                            "wall_death": 0.0, "player_death": 0.0,
-                                           "carrier_death": 0.0, "flag_return": 0.0})
+                                           "carrier_death": 0.0, "flag_return": 0.0,
+                                           "defense": 0.3})
     decide = {s.id: load_decide(WIGGLE) for s in match.spheres}
     discounted = [0.0, 0.0, 0.0]
     phi0 = None
@@ -67,3 +68,17 @@ def test_pickup_does_not_jump_potential():
     flag.carrier, sphere.carrying_flag = sphere, flag
     after = tracker._potentials()[0]
     assert abs(after - before) < 0.5 / 180 * 4.5
+
+
+def test_defense_potential_rewards_closing_on_our_stolen_flag():
+    match = Match(2, max_ticks=10)
+    tracker = RewardTracker(match, "red", {"gamma": 1.0, "defense": 0.5})
+    enemy = next(s for s in match.spheres if s.team == "blue")
+    tracker.own_flag.carrier, enemy.carrying_flag = enemy, tracker.own_flag
+    tracker.own_flag.x, tracker.own_flag.y = 0.0, 0.0
+    me = tracker.spheres[0]
+    me.x, me.y = 50.0, 0.0
+    far = tracker._potentials()[0]
+    me.x = 10.0
+    near = tracker._potentials()[0]
+    assert near > far

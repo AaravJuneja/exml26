@@ -34,6 +34,8 @@ DEFAULT_WEIGHTS = {
     "carrier_death": 0.25, # extra penalty for dying while carrying
     "flag_return": 0.2,    # the enemy carrier of our flag is eliminated (team)
     "shaping": 0.5,        # potential scale: Phi = -shaping * route_length / 180
+    "defense": 0.0,        # extra potential while an enemy carries our flag:
+                           # -defense * distance(me, our flag's public position) / 180
     "gamma": 1.0,          # discount inside the shaping term (see train --shaping-gamma)
 }
 
@@ -60,6 +62,9 @@ class RewardTracker:
         carrier = flag.carrier
         scale = -self.weights["shaping"] / 180.0
         offset = self.weights.get("offset", 0.0)
+        own_flag = self.own_flag
+        defense = self.weights.get("defense", 0.0)
+        defending = defense > 0 and own_flag.carrier is not None
         out = []
         for k, sphere in enumerate(self.spheres):
             x, y = (sphere.x, sphere.y) if sphere.alive else self.spawns[k]
@@ -70,7 +75,10 @@ class RewardTracker:
                     route = math.hypot(flag.x - hx, flag.y - hy)
             else:
                 route = math.hypot(x - flag.x, y - flag.y) + math.hypot(flag.x - hx, flag.y - hy)
-            out.append(scale * (route - offset))
+            phi = scale * (route - offset)
+            if defending:
+                phi -= defense * math.hypot(x - own_flag.x, y - own_flag.y) / 180.0
+            out.append(phi)
         return out
 
     def before(self):
