@@ -1,5 +1,5 @@
 {
- "summary": "<b>Strategy reset after independent surveys.</b> Both reviewers found that plain RL has plateaued against relay and balanced: about 15-20% wins, with goal difference improving only ~0.3 per 100M samples. The gap is behaviour, not action expressivity: relay rounded to our action bins, with sonar disabled, still beats us ~70%. We hit walls 1-1.7 times per player per match; relay's whole team averages ~0.04.<br><br><b>Now running:</b><ul><li><b>k1 (kickstarting):</b> PPO plus an imitation loss toward a shadow relay teacher's actions on our own states (DAgger-style), fading over 150M samples. So far wall deaths are down to 0.83 per player; goals dipped mid-transition.</li><li><b>m5b:</b> the unchanged control.</li><li><b>Plan B in development:</b> the network picks heading and speed, and a fixed physics controller drives the sphere (the probe found cloning works much better there).</li></ul>Methodology fixes: one or two focused jobs instead of four (throughput per job back up); paired A/B tool (128 games per opponent with CIs); re-pickup delay tracked. The league's frozen opponents now play greedy, like the deployed model. <b>Repo:</b> front page <code>index.html</code> + model gallery/viewer.",
+ "summary": "<b>Breakthrough: plan B.</b> The network now chooses a desired <i>heading and speed</i> each tick, and a fixed physics controller (inlined in model.py) turns that into throttle and turn. Trained from scratch with kickstarting from the relay bot, run <b>b1</b> matched our best old-action-space model in about 45 minutes (58M samples). Our older models took 15+ hours:<ul><li>baseline 99% (goal diff +9.3)</li><li>relay 15%, balanced 14%</li><li>rusher 41%</li><li><b>wall deaths 0.07 per player, vs ~1.2 before</b></li><li>41% agreement with the teacher, vs 15% in the old action space</li></ul>The imitation weight is still 0.8 and fading, so there's room to climb. All 9 training workers are now on b1.<br><br>Failed and parked: kickstarting in the old throttle/turn-bin action space (k1, k2), the focused relay curriculum (m5b), and the generalist league (g1, flat). The release (teams/exml_rl, m4c u210) is still the best <i>submitted</i> model until b1 beats it on the paired 128-game test.",
  "milestones": [
   {
    "id": "M0",
@@ -35,7 +35,7 @@
    "id": "M5",
    "title": "Improvements: GRU, sonar, bigger nets, PBT",
    "state": "active",
-   "note": "GRU option built; clear-ground features v2 added"
+   "note": "Plan B goal action space + kickstarting = big jump (b1)"
   },
   {
    "id": "M6",
@@ -114,24 +114,19 @@
  ],
  "runs": [
   {
-   "name": "g1",
+   "name": "b1",
    "state": "running",
-   "description": "Generalist league from m4c (the release lineage), v5: broad mix of all scripted styles + greedy snapshot pool + mirror; 9 workers."
+   "description": "Plan B: heading/speed goal action space + physics controller; from scratch, kickstarted from relay (CE 1.0 fading over 300M); 9 workers."
   },
   {
-   "name": "k1",
+   "name": "g1",
    "state": "stopped",
-   "description": "Kickstarting (CE 1.0) from relay: collapsed (relay 2%). Failed."
-  },
-  {
-   "name": "k2",
-   "state": "stopped",
-   "description": "Light kickstarting (CE 0.05): also degraded. Failed."
+   "description": "Generalist league in the old action space: flat. Stopped."
   },
   {
    "name": "m5b",
    "state": "stopped",
-   "description": "Focused relay/balanced curriculum: no better than the release after ~10 h (paired A/B)."
+   "description": "Focused curriculum, old action space: no better than the release."
   }
  ],
  "updates": [
@@ -198,6 +193,10 @@
   {
    "time": "2026-10-26 19:00",
    "text": "Kickstarting in the bins action space failed (k1, k2). Paired A/B: m5b \u2248 release (no progress in 10 h; worse vs guardian). Switched to the generalist league g1 from the release lineage; plan B (heading/speed action space) in development."
+  },
+  {
+   "time": "2026-10-26 19:45",
+   "text": "PLAN B BREAKTHROUGH: b1 (heading/speed + controller + relay kickstart) matched our best old model in 45 min from scratch, with 16x fewer wall deaths. All compute moved to b1."
   }
  ]
 }
