@@ -1,14 +1,17 @@
 #!/bin/bash
-# Final verification from a fresh clone of origin/main (laptop).
+# Final verification from a fresh clone of origin/main.
+# GAME_ENV is the distributed game-env folder (default: ../game-env next to this repo).
 set -u
-PY=python
-D=/tmp/exml-final-clone
-rm -rf $D && git clone -q "$(git -C . remote get-url origin)" $D
+cd "$(dirname "$0")/.."
+PY=${PYTHON:-python}
+GAME_ENV=$(cd "${GAME_ENV:-../game-env}" && pwd)
+D=${TMPDIR:-/tmp}/exml-final-clone
+rm -rf $D && git clone -q "$(git remote get-url origin)" $D
 cd $D || exit 1
 echo "== commit $(git log --oneline -1)"
-echo "== engine/rpc/main.py unchanged vs ../game-env:"
-for f in main.py $(cd ../game-env && find engine rpc -name '*.py' | sort); do
-  cmp -s "$f" "../game-env/$f" || echo "   DIFFERS: $f"
+echo "== engine/rpc/main.py unchanged vs game-env:"
+for f in main.py $(cd "$GAME_ENV" && find engine rpc -name '*.py' | sort); do
+  cmp -s "$f" "$GAME_ENV/$f" || echo "   DIFFERS: $f"
 done
 echo "== release reports and model hashes"
 $PY - <<'PY'

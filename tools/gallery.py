@@ -12,15 +12,15 @@ pages work when opened straight from disk (file://, where fetch() of JSON is blo
     replays/<id>.js       window.REPLAYS["<id>"] = <tools/replay.py JSON>
 
 Model history comes from each run's eval.jsonl (held-out gauntlet every 50 updates) and
-log.jsonl (training stats, binned down to ~CURVE_POINTS points), fetched into runs_cache/.
-Replays are recorded on the training machine with *each run's own frozen code copy* (runs/<run>/code),
+log.jsonl (training stats, binned down to ~CURVE_POINTS points), copied from runs/ into
+runs_cache/. Replays are recorded with *each run's own frozen code copy* (runs/<run>/code),
 because policies from older runs use older feature layouts. At most 3 replay processes run
 at once; existing replays are reused unless --force is given.
 """
 
 import argparse
 import json
-import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -28,16 +28,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REMOTE = ROOT / "tools" / "remote.sh"
+RUNS = ROOT / "runs"
 CACHE = ROOT / "runs_cache"
 OUT = ROOT / "docs" / "gallery" / "data"
 STATUS = ROOT / "docs" / "tracker_status.json"
 RELEASE = ROOT / "teams" / "exml_rl" / "release_report.json"
-
-REMOTE_BASE = "."
-REMOTE_RUNS = f"{REMOTE_BASE}/runs"
-REMOTE_PY = f"{REMOTE_BASE}/.venv/bin/python"
-REMOTE_OUT = "gallery"  # under runs/
 
 DEFAULT_RUNS = ["m2e", "m3b", "m3d", "m3e-c", "m4c", "m5a", "m5b"]
 DEFAULT_LATEST = ["m5b", "m5a"]
@@ -53,13 +48,6 @@ MAX_JOBS = 3
 
 def log(msg):
     print(msg, flush=True)
-
-
-def remote(*args, check=True, capture=True):
-    result = subprocess.run([str(REMOTE), *args], capture_output=capture, text=True)
-    if check and result.returncode != 0:
-        raise RuntimeError(f"remote.sh {' '.join(args)[:200]} failed:\n{result.stderr or result.stdout}")
-    return result
 
 
 def read_jsonl(path):
@@ -87,31 +75,28 @@ def js_assign(target, obj):
     return f"{target} = {payload};\n"
 
 
-# ------------------------------------------------------------------ remote state
-def remote_inventory(runs):
-    """{run: {"policies": [updates], "code": bool}} for runs that exist on the training machine."""
-    script = (f"cd {REMOTE_RUNS} && for r in {' '.join(shlex.quote(r) for r in runs)}; do "
-              f"[ -d \"$r\" ] || continue; "
-              f"c=0; [ -f \"$r/code/tools/replay.py\" ] && c=1; "
-              f"echo \"$r $c $(ls \"$r/policies\" 2>/dev/null | tr '\\n' ' ')\"; done")
-    out = remote("run", script).stdout
+# ------------------------------------------------------------------ run state
+def inventory_of(runs):
+    """{run: {"policies": [updates], "code": bool}} for runs that exist under runs/."""
     inv = {}
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) < 2 or parts[0] not in runs:
+    for run in runs:
+        run_dir = RUNS / run
+        if not run_dir.is_dir():
             continue
-        updates = sorted(int(p[1:-4]) for p in parts[2:]
-                         if p.startswith("u") and p.endswith(".npz") and p[1:-4].isdigit())
-        inv[parts[0]] = {"policies": updates, "code": parts[1] == "1"}
+        names = [p.name for p in (run_dir / "policies").glob("u*.npz")]
+        updates = sorted(int(n[1:-4]) for n in names if n[1:-4].isdigit())
+        inv[run] = {"policies": updates, "code": (run_dir / "code" / "tools" / "replay.py").exists()}
     return inv
 
 
-def fetch_logs(runs):
+def copy_logs(runs):
     for run in runs:
         dest = CACHE / run
         dest.mkdir(parents=True, exist_ok=True)
         for name in ("log.jsonl", "eval.jsonl"):
-            remote("fetch", f"{run}/{name}", f"{dest}/", check=False)
+            src = RUNS / run / name
+            if src.exists():
+                shutil.copy2(src, dest / name)
 
 
 # ------------------------------------------------------------------ history
@@ -188,7 +173,7 @@ def replay_id(run, update, opponent, seed, side):
 
 
 def record_replay(task, ticks, every, force):
-    """Record one replay on the training machine with the run's code copy, fetch it, wrap it as JS."""
+    """Record one replay with the run's code copy and wrap it as JS."""
     rid, run, update, opp, seed, side = (task[k] for k in ("id", "run", "update", "opponent",
                                                           "seed", "side"))
     js_path = OUT / "replays" / f"{rid}.js"
@@ -198,19 +183,15 @@ def record_replay(task, ticks, every, force):
         meta = json.loads(raw.read_text())["meta"]
         if meta.get("every") == every and meta.get("max_ticks") == ticks:
             return summarize(task, raw, js_path, cached=True)
-    policy = f"{REMOTE_RUNS}/{run}/policies/u{update:05d}.npz"
-    remote_json = f"{REMOTE_RUNS}/{REMOTE_OUT}/{rid}.json"
-    cmd = (f"mkdir -p {REMOTE_RUNS}/{REMOTE_OUT} && cd {REMOTE_RUNS}/{run}/code && "
-           f"{REMOTE_PY} tools/replay.py {shlex.quote(policy)} {shlex.quote(opp)} "
-           f"--seed {seed} --side {side} --ticks {ticks} --every {every} "
-           f"--out {shlex.quote(remote_json)}")
+    policy = RUNS / run / "policies" / f"u{update:05d}.npz"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [sys.executable, "tools/replay.py", str(policy), opp, "--seed", str(seed),
+           "--side", side, "--ticks", str(ticks), "--every", str(every), "--out", str(raw)]
     started = time.time()
-    result = remote("run", cmd, check=False)
+    result = subprocess.run(cmd, cwd=RUNS / run / "code", capture_output=True, text=True)
     if result.returncode != 0:
         log(f"  FAILED {rid}: {(result.stderr or result.stdout).strip()[-400:]}")
         return None
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    remote("fetch", f"{REMOTE_OUT}/{rid}.json", f"{raw_dir}/")
     replay = json.loads(raw.read_text())
     a_side = replay["meta"]["a_side"]
     label = f"{run} u{update}"
@@ -334,16 +315,16 @@ def main(argv=None):
     candidates = [args.run] if args.run else DEFAULT_LATEST
     all_runs = list(dict.fromkeys(runs + candidates + milestone_runs))
 
-    log("inventory on the training machine ...")
-    inventory = remote_inventory(all_runs)
+    log(f"inventory of {RUNS.relative_to(ROOT)}/ ...")
+    inventory = inventory_of(all_runs)
     for run in all_runs:
         inv = inventory.get(run)
         log(f"  {run}: " + (f"{len(inv['policies'])} snapshots"
                             f"{'' if inv['code'] else ', no code copy (no replays)'}"
                             if inv else "missing, skipped"))
     if not args.no_fetch:
-        log("fetching logs ...")
-        fetch_logs([r for r in runs if r in inventory])
+        log("copying logs ...")
+        copy_logs([r for r in runs if r in inventory])
 
     latest_run = next((r for r in candidates if r in inventory and inventory[r]["policies"]), None)
     latest = None
@@ -394,7 +375,7 @@ def main(argv=None):
 
     if not args.no_replays and tasks:
         jobs = max(1, min(MAX_JOBS, args.jobs))
-        log(f"recording {len(tasks)} replays on the training machine ({jobs} at a time, every {args.every}) ...")
+        log(f"recording {len(tasks)} replays ({jobs} at a time, every {args.every}) ...")
         with ThreadPoolExecutor(jobs) as pool:
             results = list(pool.map(lambda t: record_replay(t, args.ticks, args.every, args.force),
                                     tasks))

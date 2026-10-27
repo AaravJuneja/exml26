@@ -1,6 +1,6 @@
 """Render docs/tracker.html from docs/tracker_status.json and fetched training logs.
 
-    tools/remote.sh fetch RUN/log.jsonl runs_cache/RUN/   (done by tools/update_tracker.sh)
+    tools/update_tracker.sh copies runs/RUN/{log,eval}.jsonl into runs_cache/RUN/
     python tools/tracker.py
 """
 
@@ -135,7 +135,7 @@ def render():
     runs = "".join(run_section(run) for run in status["runs"])
     page = f"""<!doctype html><html><head><meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
-<title>ExML CTF — progress tracker</title><style>
+<title>ExML CTF: progress tracker</title><style>
 body{{margin:0;background:#0f1419;color:#dce3ea;font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif}}
 main{{max-width:1150px;margin:0 auto;padding:28px 22px 70px}} h1{{margin:0 0 4px;font-size:28px}}
 h2{{font-size:20px;margin:36px 0 10px;border-bottom:1px solid #2a3644;padding-bottom:6px}} h3{{color:#5fb3f9;margin:22px 0 4px}}
@@ -147,7 +147,7 @@ th,td{{padding:8px 11px;border-bottom:1px solid #2a3644;text-align:left;vertical
 .label{{font-size:13px;color:#8b98a8}} .label b{{color:#dce3ea}} .ax{{fill:#8b98a8;font-size:10px}} .tag{{font-size:12px;color:#8b98a8;font-weight:400}}
 .box{{background:#18273a;border:1px solid #2d4560;border-radius:10px;padding:12px 18px}} li{{margin:5px 0}}
 </style></head><body><main>
-<h1>ExML Capture the Flag — progress tracker</h1>
+<h1>ExML Capture the Flag: progress tracker</h1>
 <div class='muted'>Last updated {time.strftime('%Y-%m-%d %H:%M')} · branch <code>main</code> · <a style='color:#5fb3f9' href='viewer.html'>model gallery &amp; replays</a> · <a style='color:#5fb3f9' href='../index.html'>home</a></div>
 <h2>Where we are</h2><div class='box'>{status['summary']}</div>
 <h2>Milestones</h2><table><tr><th>#</th><th>Milestone</th><th>State</th><th>Notes</th></tr>{milestones}</table>
