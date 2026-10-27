@@ -385,7 +385,154 @@
   "same_code_quiet_reference": "p99 0.65 ms, max 6.8 ms; 6 stress processes: p99 1.8 ms, max 9.2 ms (3000 ticks)",
   "pass_no_stress_now": [
    true
-  ]
+  ],
+  "final_measurement": {
+   "when": "2026-10-27 19:45 IST, training machine after the external Java process ended (58% memory free), 6000 ticks, our other jobs paused",
+   "runs": [
+    {
+     "ticks": 6000,
+     "stress_procs": 0,
+     "pass": true,
+     "verdict": {
+      "callback_p99_le_10ms": true,
+      "callback_max_le_20ms": true,
+      "zero_timeouts": true,
+      "model_loaded": true,
+      "zero_model_errors": true,
+      "decide_p99_le_3ms": true,
+      "all_pass": true
+     },
+     "callback": {
+      "n": 32760,
+      "mean_ms": 0.1782,
+      "p50_ms": 0.1448,
+      "p90_ms": 0.2848,
+      "p99_ms": 0.5484,
+      "p99.9_ms": 1.3398,
+      "max_ms": 4.3729,
+      "over_10ms": 0,
+      "over_20ms": 0,
+      "over_30ms": 0
+     },
+     "inprocess_decide": {
+      "n": 5365,
+      "mean_ms": 0.0488,
+      "p50_ms": 0.0482,
+      "p90_ms": 0.054,
+      "p99_ms": 0.0644,
+      "p99.9_ms": 0.1204,
+      "max_ms": 0.2098,
+      "over_10ms": 0,
+      "over_20ms": 0,
+      "over_30ms": 0
+     },
+     "timeouts_or_respawns": 0,
+     "scores": [
+      {
+       "red": 11,
+       "blue": 15
+      }
+     ],
+     "cpu_count": 10,
+     "python": "3.14.9"
+    },
+    {
+     "ticks": 6000,
+     "stress_procs": 6,
+     "pass": false,
+     "verdict": {
+      "callback_p99_le_10ms": true,
+      "callback_max_le_20ms": false,
+      "zero_timeouts": true,
+      "model_loaded": true,
+      "zero_model_errors": true,
+      "decide_p99_le_3ms": true,
+      "all_pass": false
+     },
+     "callback": {
+      "n": 33441,
+      "mean_ms": 0.5492,
+      "p50_ms": 0.4229,
+      "p90_ms": 0.8755,
+      "p99_ms": 2.3112,
+      "p99.9_ms": 7.3588,
+      "max_ms": 37.5762,
+      "over_10ms": 19,
+      "over_20ms": 8,
+      "over_30ms": 5
+     },
+     "inprocess_decide": {
+      "n": 5365,
+      "mean_ms": 0.0515,
+      "p50_ms": 0.0497,
+      "p90_ms": 0.057,
+      "p99_ms": 0.1032,
+      "p99.9_ms": 0.1996,
+      "max_ms": 0.2721,
+      "over_10ms": 0,
+      "over_20ms": 0,
+      "over_30ms": 0
+     },
+     "timeouts_or_respawns": 0,
+     "scores": [
+      {
+       "red": 10,
+       "blue": 16
+      }
+     ],
+     "cpu_count": 10,
+     "python": "3.14.9"
+    },
+    {
+     "ticks": 6000,
+     "stress_procs": 6,
+     "pass": false,
+     "verdict": {
+      "callback_p99_le_10ms": true,
+      "callback_max_le_20ms": false,
+      "zero_timeouts": true,
+      "model_loaded": true,
+      "zero_model_errors": true,
+      "decide_p99_le_3ms": true,
+      "all_pass": false
+     },
+     "callback": {
+      "n": 33720,
+      "mean_ms": 0.5773,
+      "p50_ms": 0.4648,
+      "p90_ms": 0.9293,
+      "p99_ms": 2.1851,
+      "p99.9_ms": 5.1028,
+      "max_ms": 26.9637,
+      "over_10ms": 4,
+      "over_20ms": 3,
+      "over_30ms": 0
+     },
+     "inprocess_decide": {
+      "n": 5365,
+      "mean_ms": 0.0479,
+      "p50_ms": 0.0477,
+      "p90_ms": 0.0532,
+      "p99_ms": 0.0566,
+      "p99.9_ms": 0.1042,
+      "max_ms": 0.1538,
+      "over_10ms": 0,
+      "over_20ms": 0,
+      "over_30ms": 0
+     },
+     "timeouts_or_respawns": 0,
+     "scores": [
+      {
+       "red": 12,
+       "blue": 16
+      }
+     ],
+     "cpu_count": 10,
+     "python": "3.14.9"
+    }
+   ],
+   "summary": "No stress: PASS, p99 0.55 ms, max 4.37 ms. With 6 extra CPU-burning processes: p99 2.2-2.3 ms; 5 of ~66k callbacks exceeded 30 ms (isolated OS-scheduling stalls; the model's own decide() max was 0.27 ms)."
+  }
  },
  "strength": {
   "spec": "teams/exml_rl_pure/model.py@doc",
