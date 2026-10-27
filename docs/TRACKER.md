@@ -119,6 +119,8 @@ Working log. The summary is `docs/tracker.html`.
 | b2 (training from averaged weights, lr 1e-4) | stopped at ~u2700 to free compute for the window confirmations; not evaluated before the deadline |
 | d5 (pure student re-distilled from the averaged release teacher, resumed from d4) | KL 0.86 → ~0.76 plateau; stopped 19:40 at u470 |
 | d5 avg u350–450 @τ0.7 vs pure release (avg d4 u100–150 @τ0.7) | seeds 4200–4263: **+1.64 [+1.31, +1.96], dWin +12.5**, relay +2.03 (48% wins); **confirmed** on 4300–4363: **+1.45 [+1.08, +1.83], dWin +11.2**. Other windows on 4300–4363: u160–470 +1.51, u300–470 +1.37 (no better) |
+| **Release teams/exml_rl_pure = d5 avg u350–450 @τ0.7** | PASS. Held-out 640: **80% wins** (515): provided bots 100%, steady 98%, rusher 89%, chaos 88%, camper 78%, guardian 73%, balanced 41%, relay 38%. Latency: same code as previous pure release; no-stress re-measure p99 0.97 ms, max 9.2 ms; stress runs under external memory pressure kept as measured |
+| **Experiment freeze (20:20 IST)** | no further training or exploration; final verification and docs only |
 | Training window | stop all training-machine work by ~06:30 IST 27 Oct (watchdog `stop_at_6.sh` fires 06:25; resume via RESUME file). Afterwards: laptop only (`~/exml-ts`, Linux FS), one task at a time |
 | g1 generalist league (old space) | Flat after 112M samples (relay 17%, guardian 31%). Stopped. |
 | g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |

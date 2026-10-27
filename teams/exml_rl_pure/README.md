@@ -6,13 +6,13 @@ file `model.py` (stdlib + numpy, greedy decoding). `policy.npz` is the source po
 
 | field | value |
 |---|---|
-| run | d4 |
+| run | d5 |
 | update | None |
 | samples | None |
 | architecture | mlp |
-| source | `runs/release-pure2/d4_avg100_150_t0.7.npz` |
-| policy.npz sha256 | `af40efca6b2647271626582b537b46268e79622ee265787724a3f7bbad40ac9b` |
-| model.py sha256 | `adbbf13ee938457d751d558f8f0814a8bfa5faadaead8d94454ffb5c03dc65af` |
-| model.py size | 661.0 KiB |
+| source | `runs/release-pure-final/d5_avg350_450_t0.7.npz` |
+| policy.npz sha256 | `549a6ab22dbfb57a3b54487718f844585e93085170d92ed91d3590ea888e3a0e` |
+| model.py sha256 | `2fe7922b331ecf007d9b17781a77b3467ae0e2dff1f19031fd3e39315f1fc478` |
+| model.py size | 661.2 KiB |
 | decode | sample |
-| date (UTC) | 2026-10-27T13:23:57+00:00 |
+| date (UTC) | 2026-10-27T14:39:28+00:00 |
