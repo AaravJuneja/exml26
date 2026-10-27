@@ -30,4 +30,4 @@ for pair in "submission/hybrid/model.py teams/baseline/model.py" "submission/pur
 done
 git checkout -q teams.json
 echo "== full test suite"
-$PY -m pytest -q -p no:cacheprovider ctf/tests 2>&1 | tail -n 1
+mkdir -p $D.tmp && TMPDIR=$D.tmp $PY -m pytest -q -p no:cacheprovider --basetemp=$D.tmp/base ctf/tests 2>&1 | tail -n 1; rm -rf $D.tmp
