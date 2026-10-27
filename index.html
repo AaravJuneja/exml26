@@ -90,8 +90,10 @@
   const R = G.release;
   if (R) {
     const ok = v => '<span class="pill ' + (v ? "ok" : "bad") + '">' + (v ? "pass" : "fail") + "</span>";
-    h += '<h2 id="release">Released submission · ' + esc(R.name) + "</h2><p class=\"muted\">Policy " + esc(R.run) + " u" + R.update + " (" +
-      (R.samples / 1e6).toFixed(0) + "M samples, " + esc(R.arch) + ", features v" + esc(R.feature_version) + ", " + R.model_kib + " KiB, sha " +
+    h += '<h2 id="release">Released submission · ' + esc(R.name) + "</h2><p class=\"muted\">Policy " + esc(R.run) + (R.update != null ? " u" + R.update : "") + " (" +
+      (R.averaged ? "weights averaged over " + R.averaged + " snapshots, " : "") +
+      (R.samples ? (R.samples / 1e6).toFixed(0) + "M samples, " : "") +
+      (R.temperature ? "temperature " + esc(JSON.parse(R.temperature)[0]) + ", " : "") + esc(R.arch) + ", features v" + esc(R.feature_version) + ", " + R.model_kib + " KiB, sha " +
       esc(R.sha) + ") · " + esc((R.date || "").slice(0, 16).replace("T", " ")) + " UTC · overall " + ok(R.status === "PASS") +
       " · checks: " + Object.entries(R.checks || {}).map(([k, v]) => esc(k) + " " + ok(v)).join(" ") + "</p>";
     h += "<table><tr><th>opponent</th><th>W-D-L</th><th>win rate [95% CI]</th><th>goal diff</th><th>goals for / against</th><th>decide p99</th></tr>" +

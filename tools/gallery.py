@@ -263,8 +263,11 @@ def release_info():
              "gd": x["goal_diff"], "gf": x.get("goals_for"), "ga": x.get("goals_against"),
              "wall": x.get("wall_deaths_pp"), "p99": x.get("decide_p99_ms_max")}
             for x in strength.get("rows", [])]
+    lat = r.get("latency", {})
+    lat_runs = (lat.get("runs") or lat.get("final_measurement", {}).get("runs")
+                or lat.get("final_remeasurement") or [])
     latency = []
-    for run in r.get("latency", {}).get("runs", []):
+    for run in lat_runs:
         cb, dec = run.get("callback", {}), run.get("inprocess_decide", {})
         latency.append({"stress": run.get("stress_procs"), "pass": run.get("pass"),
                         "cb_p50": cb.get("p50_ms"), "cb_p99": cb.get("p99_ms"),
@@ -277,6 +280,8 @@ def release_info():
             "samples": pol.get("samples"), "arch": pol.get("arch"),
             "sha": (pol.get("sha256") or "")[:12], "model_kib": pol.get("model_kib"),
             "feature_version": pol.get("meta", {}).get("feature_version"),
+            "averaged": pol.get("averaged_snapshots") or len(pol.get("meta", {}).get("averaged_from") or []) or None,
+            "temperature": pol.get("meta", {}).get("temperature"),
             "seeds": strength.get("seeds"), "mean_w": strength.get("mean_win_rate"),
             "total": strength.get("total"), "rows": rows, "latency": latency}
 

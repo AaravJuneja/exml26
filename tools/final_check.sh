@@ -2,7 +2,7 @@
 # Final verification from a fresh clone of origin/main (laptop).
 set -u
 PY=python
-D=/tmp/final_clone
+D=/tmp/exml-final-clone
 rm -rf $D && git clone -q "$(git -C . remote get-url origin)" $D
 cd $D || exit 1
 echo "== commit $(git log --oneline -1)"

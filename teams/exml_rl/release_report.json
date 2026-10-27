@@ -310,7 +310,9 @@
    "temperature": "[0.7, 0.7, 0.7]",
    "source": "runs/swa4/avg_160_2030_s20.npz",
    "run": "b1"
-  }
+  },
+  "averaged_snapshots": 94,
+  "averaged_from": "b1 snapshots u160-u2030 (every 20 updates)"
  },
  "audit": {
   "pass": true,
