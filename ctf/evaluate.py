@@ -19,6 +19,9 @@ Options follow an `@`, comma separated:
     @sample      sample actions; @seed=N sets the sampling seed (default 0)
     @doc         pass only the documented observation keys
     @full        also pass the backend's undocumented `teammates` field
+    @snap[=MODE] goal-space `.npz` only: round the controller's throttle/turn to the bins
+                 tables (near (default), cap, dither, dcap, dlethal; ctf/distill.py), i.e. the
+                 rounding floor of a bins student imitating the policy
     @proc        `.py` only: run each player in its own spawned worker process
                  through `rpc.worker.ModelWorker` (importlib load, as deployed)
 
@@ -85,6 +88,8 @@ class PlayerSpec:
     sample_seed: int = 0      # npz only, used when greedy is False
     documented_only: bool = True
     process: bool = False     # scripted only: one worker process per player
+    snap: str = ""            # npz goal policies: round throttle/turn to the bins tables
+                              # (ctf/distill.py SNAP_MODES, see bins_weights)
 
     @property
     def label(self):
@@ -95,8 +100,9 @@ class PlayerSpec:
             base = Path(self.path).stem
         else:
             base = f"{Path(self.path).parent.name}/{Path(self.path).stem}"
-        if self.kind == "npz" and not self.greedy:
-            base += f"@sample,seed={self.sample_seed}"
+        if self.kind == "npz" and (not self.greedy or self.snap):
+            opts = [] if self.greedy else ["sample", f"seed={self.sample_seed}"]
+            base += "@" + ",".join(opts + ([f"snap={self.snap}"] if self.snap else []))
         elif self.kind == "scripted":
             opts = []
             default_documented = not self.name
@@ -114,6 +120,8 @@ class PlayerSpec:
         base = self.name or self.path
         if self.kind == "npz":
             opts = "greedy" if self.greedy else f"sample,seed={self.sample_seed}"
+            if self.snap:
+                opts += f",snap={self.snap}"
         else:
             opts = ("doc" if self.documented_only else "full") + (",proc" if self.process else "")
         return f"{base}@{opts}"
@@ -158,6 +166,9 @@ def parse_spec(spec):
             result = replace(result, greedy=False)
         elif key == "seed" and result.kind == "npz":
             result = replace(result, sample_seed=int(value))
+        elif key == "snap" and result.kind == "npz" and value in ("", "near", "cap", "dither",
+                                                                  "dcap", "dlethal"):
+            result = replace(result, snap=value or "near")
         elif key == "doc" and result.kind != "npz":
             result = replace(result, documented_only=True)
         elif key == "full" and result.kind == "scripted":
@@ -350,6 +361,7 @@ class _PolicyTeam:
     def __init__(self, spec, sphere_ids, rng):
         self.actor, self.digest = _loaded(spec)
         self.greedy = spec.greedy
+        self.snap = spec.snap
         self.rng = rng
         self.ids = sorted(sphere_ids)
         self.state = PolicyMemories(self.actor, self.ids, encode)
@@ -364,7 +376,19 @@ class _PolicyTeam:
         start = time.perf_counter()
         docs = [_documented(observations[sid]) for sid in ids]
         batch = self.state.encode_batch(ids, docs)
-        _, engine = self.state.act_engine(ids, batch, self.rng, self.greedy, docs)
+        chosen, engine = self.state.act_engine(ids, batch, self.rng, self.greedy, docs)
+        if self.snap and self.actor.space == "goal":
+            # The rounding floor of a bins student imitating this goal policy.
+            from ctf.distill import snap_engine
+            from ctf.features import SPEED_VALUES
+
+            snapped = []
+            for sid, doc, goal, (throttle, turn, jump) in zip(ids, docs, chosen.tolist(), engine):
+                throttle, turn = snap_engine(self.snap, doc.get("self") or {}, throttle, turn,
+                                             SPEED_VALUES[goal[1]], self.rng)
+                self.memories[sid].prev_push = throttle
+                snapped.append((throttle, turn, jump))
+            engine = snapped
         actions = dict(zip(ids, engine))
         self.times.append(time.perf_counter() - start)
         return actions

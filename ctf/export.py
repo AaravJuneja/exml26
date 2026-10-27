@@ -235,6 +235,10 @@ def _mx_unpack():
 {net}_MEMORY = PlayerMemory()
 _mx_rng = None
 _mx_errors = 0
+if _MX_DECODE == "sample":
+    # numpy sets up its bit generators on the first default_rng() call (~15 ms);
+    # pay that at import time instead of inside the first timed decide().
+    _mx_np.random.default_rng(0).random()
 
 
 def _mx_sample(head):

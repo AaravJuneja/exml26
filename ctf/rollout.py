@@ -79,6 +79,29 @@ def teacher_label(decide, observation, space=A.BINS):
     return space.teacher_label(decide, observation)
 
 
+def policy_teacher(spec):
+    """PolicyTeacher for a 'policy:/path/goal_policy.npz[@OPTION,...]' teacher spec, else None.
+
+    Options (ctf/distill.py): a snap mode (near, cap, dither, dcap; default dither) and
+    a commit mode (posterior, sample; default posterior)."""
+    if not spec or not spec.startswith("policy:"):
+        return None
+    from ctf.distill import COMMIT_MODES, SNAP_MODES, PolicyTeacher
+
+    path, _, options = spec.split(":", 1)[1].partition("@")
+    kwargs = {}
+    for option in filter(None, options.split(",")):
+        if option in SNAP_MODES:
+            kwargs["snap"] = option
+        elif option in COMMIT_MODES:
+            kwargs["commit"] = option
+        else:
+            raise ValueError(f"unknown policy teacher option {option!r}")
+    if path not in _POLICY_CACHE:
+        _POLICY_CACHE[path] = load_policy(path)[0]
+    return PolicyTeacher(_POLICY_CACHE[path], **kwargs)
+
+
 def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, hidden_every=0,
             teacher=None):
     """Play every job to completion. jobs: [{'seed', 'side', 'opponent'}].
@@ -93,6 +116,13 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     [T, units, 3]. The teacher never acts; in the goal space its record of its own
     last throttle is replaced by the executed one (`action_space.sync_teacher`).
 
+    `teacher='policy:/path/goal.npz'` (bins actors only) distills a goal-space policy
+    (ctf/distill.py): every learner player has a shadow PlayerMemory and controller
+    state of that policy, and the result also has `teacher_soft` [T, units, 3, logits]
+    (per-head soft targets: the policy's goal distribution pushed through the
+    controller onto the bins); `teacher_actions` holds their per-head argmax. A
+    simulated memory wipe also wipes the shadow memory.
+
     The actor's action space (`actor.space`) sets the feature layout, the player
     memories and how sampled indices become engine actions; `actions` holds the
     sampled head indices.
@@ -105,6 +135,11 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     rng = np.random.default_rng(seed)
     space = A.get(getattr(actor, "space", "bins"))
     T, D = max_ticks, space.feature_dim
+    distill = policy_teacher(teacher)
+    if distill is not None:
+        if space is not A.BINS:
+            raise ValueError("a policy teacher distills into the bins action space only")
+        teacher_rng = np.random.default_rng([seed, 1])  # the student's draws stay unchanged
 
     matches, opponents = [], []
     units = []  # dicts: match index, tracker, sphere ids, memories, wipe ticks, job
@@ -131,7 +166,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 "wipes": [int(rng.integers(1, T)) if rng.random() < memory_wipe_prob else -1
                           for _ in mine],
                 "job": dict(job, side="red" if team == red else "blue"),
-                "teachers": ([_silenced(load_decide(SCRIPTED.get(teacher, teacher)))
+                "teachers": ([distill.memory() for _ in mine] if distill is not None else
+                             [_silenced(load_decide(SCRIPTED.get(teacher, teacher)))
                               for _ in mine] if teacher else None),
             })
 
@@ -144,6 +180,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     if teacher:
         teacher_actions = np.zeros((T, n_unit, 3, 3), dtype=np.int8)
         teacher_valid = np.zeros((T, n_unit, 3), dtype=bool)
+    if distill is not None:
+        teacher_soft = np.zeros((T, n_unit, 3, sum(space.head_sizes)), dtype=np.float32)
     recurrent = actor.recurrent
     if recurrent:
         if hidden_every < 1:
@@ -167,6 +205,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 memory = unit["memories"][k]
                 if unit["wipes"][k] == t:
                     memory.reset()
+                    if distill is not None:
+                        unit["teachers"][k].reset()
                 if recurrent:
                     if memory_is_fresh(memory, observation):
                         hidden[u, k] = 0.0
@@ -178,7 +218,7 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 doc = documented(observation)
                 rows.append(F.encode(doc, unit["memories"][k]))
                 docs.append(doc)
-                if teacher:
+                if teacher and distill is None:  # a policy teacher labels in one batch below
                     label = space.teacher_label(unit["teachers"][k], doc)
                     if label is not None:
                         teacher_actions[t, u, k] = label
@@ -189,6 +229,12 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
         if rows:
             x = rows_to_float32(rows)
             ui, si = np.asarray(unit_index), np.asarray(slot_index)
+            if distill is not None:
+                shadows = [units[u]["teachers"][k] for u, k in zip(unit_index, slot_index)]
+                soft, hard = distill.label(shadows, docs, teacher_rng)
+                teacher_soft[t, ui, si] = soft
+                teacher_actions[t, ui, si] = hard
+                teacher_valid[t, ui, si] = True
             if recurrent:
                 chosen, chosen_logp, hidden[ui, si] = actor.step_sample(x, hidden[ui, si], rng)
             else:
@@ -211,6 +257,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
                 step_actions[unit["match"]][unit["ids"][k]] = engine
                 if sync:
                     A.sync_teacher(unit["teachers"][k], engine[0])
+                elif distill is not None:
+                    distill.executed(unit["teachers"][k], action, engine[0], teacher_rng)
         for m_index, match in enumerate(matches):
             if opponents[m_index] is not None:
                 step_actions[m_index].update(opponents[m_index].act(all_obs[m_index]))
@@ -238,6 +286,8 @@ def collect(actor, jobs, reward_weights, max_ticks, seed, memory_wipe_prob=0.0, 
     if teacher:
         out["teacher_actions"] = teacher_actions
         out["teacher_valid"] = teacher_valid
+    if distill is not None:
+        out["teacher_soft"] = teacher_soft
     if recurrent:
         out["resets"] = resets
         out["h0_t"] = np.array([s[0] for s in stored], dtype=np.int64)

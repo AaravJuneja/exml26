@@ -42,6 +42,9 @@ DEFAULT_WEIGHTS = {
 }
 
 
+KILL_RADIUS = 3.5  # a collision kill happens at 2 units; allow for one tick of motion
+
+
 class RewardTracker:
     def __init__(self, match, team, weights):
         self.match = match
@@ -57,6 +60,13 @@ class RewardTracker:
         self.totals = {name: 0.0 for name in COMPONENTS}
         self.counts = {"pickups": 0, "wall_deaths": 0, "player_deaths": 0,
                        "carrier_deaths": 0, "flag_returns": 0}
+        # Optional "kill" reward: an enemy eliminated by collision (the enemy team's own
+        # documented death message) credits our living sphere closest to the death point.
+        self.kill = self.weights.get("kill", 0.0)
+        if self.kill:
+            self._seen_kills = set()
+            self.totals["kill"] = 0.0
+            self.counts["kills"] = 0
 
     def _potentials(self):
         hx, hy = self.home
@@ -108,6 +118,20 @@ class RewardTracker:
                 found[message["player"]] = message["reason"]
         return found
 
+    def _new_kills(self):
+        """Death points of enemies eliminated by a collision during the last act()."""
+        tick = self.match.tick - 1
+        found = []
+        for message in reversed(self.match.death_log()):
+            if message["tick"] < tick:
+                break
+            key = (message["team"], message["player"], message["tick"])
+            if (message["team"] == self.enemy and message["reason"] == "player"
+                    and key not in self._seen_kills):
+                self._seen_kills.add(key)
+                found.append((message["x"], message["y"]))
+        return found
+
     def after(self):
         """Rewards for the transition just simulated, one value per learner slot."""
         w = self.weights
@@ -144,6 +168,19 @@ class RewardTracker:
                 rewards[k] += w["pickup"]
                 self.totals["pickup"] += w["pickup"]
                 self.counts["pickups"] += 1
+
+        if self.kill:
+            for x, y in self._new_kills():
+                best, best_d = None, KILL_RADIUS
+                for k, sphere in enumerate(self.spheres):
+                    if sphere.alive:
+                        d = math.hypot(sphere.x - x, sphere.y - y)
+                        if d < best_d:
+                            best, best_d = k, d
+                if best is not None:
+                    rewards[best] += self.kill
+                    self.totals["kill"] += self.kill
+                    self.counts["kills"] += 1
 
         terminal = m.tick >= m.max_ticks
         phi = [0.0] * len(self.spheres) if terminal else self._potentials()

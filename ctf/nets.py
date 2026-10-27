@@ -105,6 +105,12 @@ def split_heads(logits, head_sizes=HEAD_SIZES):
     return logits[..., :a], logits[..., a:b], logits[..., b:]
 
 
+def log_softmax_heads(logits, head_sizes=HEAD_SIZES):
+    """Per-head log-softmax, concatenated in the logits' layout."""
+    return torch.cat([torch.log_softmax(head, dim=-1)
+                      for head in split_heads(logits, head_sizes)], dim=-1)
+
+
 def log_prob_entropy(logits, actions, head_sizes=HEAD_SIZES):
     """Joint log-probability of the three heads' indices and summed entropy."""
     logp, entropy = 0.0, 0.0
