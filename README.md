@@ -14,6 +14,10 @@ release report.
 
 ## Submission
 
+**Ready-to-submit files are in [`submission/`](submission/):** `submission/hybrid/model.py`
+(strongest) and `submission/pure/model.py` (no hand-written controller). They are byte-identical
+to the verified releases below.
+
 Two releases, each one stdlib + numpy file exposing `decide(observation)`:
 
 | Release | Architecture | Held-out (640 games) |
@@ -60,7 +64,8 @@ releases are in git history.
 | `engine/`, `rpc/`, `main.py`, `teams.json` | The official game, byte-identical to the distributed `game-env`. Never modified. |
 | `ctf/` | Our code: `sim.py` (exact fast simulator), `features.py` (observation encoder and memory, also inlined into `model.py`), `rewards.py`, `rollout.py`, `train.py` (PPO and league), `nets.py`/`npnets.py`, `evaluate.py` (paired-seed gauntlets), `export.py` (single-file `model.py`), `policy_io.py`, `feature_layouts.py` (warm-start migration), `action_space.py` and `controller.py` (plan-B goal space and actuator), `distill.py` (policy teacher for the pure network). Tests are in `ctf/tests/`. |
 | `opponents/` | Strong scripted training opponents (relay, balanced, rusher, guardian, camper, chaos, steady). Training only, never submitted. |
-| `teams/` | Provided bots (`baseline`, `example_team`) and our two releases (`exml_rl`, `exml_rl_pure`). |
+| `submission/` | The two ready-to-submit `model.py` files (`hybrid/`, `pure/`), each with a short README. |
+| `teams/` | Provided bots (`baseline`, `example_team`) and our two releases (`exml_rl`, `exml_rl_pure`) with full verification reports. |
 | `tools/` | `release.py` (export and verification), `final_check.sh` (fresh-clone verification), `ab_compare.py` / `ab_multi.py` (paired A/B), `temper.py` (temperature), `average_policies.py` (weight averaging), `diag_match.py` (behaviour diagnosis), `distill_*.py`, `replay.py`, `gallery.py`, `auto_eval.py`, `latency.py`, `tracker.py`, `migrate_policy.py`. |
 | `bench/` | Throughput benchmarks (`sim_speed.py`, `rollout_speed.py`, `broadphase.py`). |
 | `docs/` | `tracker.html` and `TRACKER.md` (progress), `viewer.html` (replays and model history), `RELEASE.md`, `eval/`, `reviews/` and `spec/` (official event documents). |

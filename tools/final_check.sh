@@ -19,10 +19,13 @@ for t in ("exml_rl", "exml_rl_pure"):
     h = hashlib.sha256(Path(f"teams/{t}/model.py").read_bytes()).hexdigest()[:16]
     print(f"   {t}: {r['status']} {r['checks']} model.py {h} decode={r['policy'].get('decode')}")
 PY
+echo "== submission/ files identical to the releases"
+cmp -s submission/hybrid/model.py teams/exml_rl/model.py && echo "   hybrid == teams/exml_rl" || echo "   MISMATCH: submission/hybrid"
+cmp -s submission/pure/model.py teams/exml_rl_pure/model.py && echo "   pure == teams/exml_rl_pure" || echo "   MISMATCH: submission/pure"
 echo "== official main.py matches (real engine + RPC workers)"
-for pair in "exml_rl/model.py baseline/model.py" "exml_rl_pure/model.py example_team/model.py" "exml_rl/model.py exml_rl_pure/model.py"; do
+for pair in "submission/hybrid/model.py teams/baseline/model.py" "submission/pure/model.py teams/example_team/model.py" "submission/hybrid/model.py submission/pure/model.py"; do
   set -- $pair
-  printf '[{"name": "red", "model_path": "teams/%s", "color": "#ff4d4d"}, {"name": "blue", "model_path": "teams/%s", "color": "#3d9bff"}]\n' $1 $2 > teams.json
+  printf '[{"name": "red", "model_path": "%s", "color": "#ff4d4d"}, {"name": "blue", "model_path": "%s", "color": "#3d9bff"}]\n' $1 $2 > teams.json
   timeout 900 $PY main.py 7 2>&1 | grep -E "match over|Error|Traceback|timed out" | head -3 | sed "s#^#   $1 vs $2: #"
 done
 git checkout -q teams.json
