@@ -28,9 +28,9 @@
   "sha256": "52c01491ab86d46a897ac371f242f94a95e9d6019959776be5dc981328210ce4",
   "policy_copy": "teams/exml_rl/policy.npz",
   "model": "teams/exml_rl/model.py",
-  "model_sha256": "7d771f0aa02ea744e9375950fe3c2156ea4f376ec1bbbb5ea1e42489ee22da72",
+  "model_sha256": "eb54b99bacc6eef2d84bc2b58dcb9546fa57841bb4519457d9b98fdf46b9aed2",
   "parity_model": "teams/exml_rl/.parity_greedy_model.py",
-  "model_kib": 693.8,
+  "model_kib": 684.1,
   "decode": "sample",
   "date": "2026-10-27T13:51:17+00:00",
   "meta": {
@@ -1380,5 +1380,34 @@
    "cpu_count": 10,
    "python": "3.14.9"
   }
- ]
+ ],
+ "comments_stripped": {
+  "tool": "tools/strip_comments.py",
+  "previous_model_sha256": "7d771f0aa02ea744e9375950fe3c2156ea4f376ec1bbbb5ea1e42489ee22da72",
+  "model_sha256": "eb54b99bacc6eef2d84bc2b58dcb9546fa57841bb4519457d9b98fdf46b9aed2",
+  "verification": "AST-identical to the released file with docstrings/comments removed; parses as Python 3.9; static audit re-run (pass); identical actions on every decision over 2 full self-play matches (~69k decisions) against the previous file",
+  "audit": {
+   "pass": true,
+   "checks": {
+    "size_ok": true,
+    "parses": true,
+    "py39_syntax": true,
+    "imports_ok": true,
+    "no_dangerous_calls": true,
+    "no_undocumented_fields": true,
+    "defines_decide": true
+   },
+   "problems": [],
+   "imports": [
+    "base64",
+    "math",
+    "numpy",
+    "os",
+    "sys",
+    "zlib"
+   ],
+   "comment_mentions": [],
+   "size_kib": 684.1
+  }
+ }
 }
