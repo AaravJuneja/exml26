@@ -1,4 +1,4 @@
-# Simulator throughput — 25 October 2026
+# Simulator throughput: 25 October 2026
 
 `python -m bench.sim_speed --ticks 2000 --procs 1,2,4,6`. Unmodified `engine/`,
 in-process callbacks, no telemetry, no RPC, no real-time sleep. The machine was
@@ -18,7 +18,7 @@ Best case: about **1,870 ticks/s**, which is:
 - **~40M agent transitions per hour** (6 spheres per tick), or ~20M for one learning team
 - **~1,100 full 6,000-tick games per hour**
 
-These exclude network inference and learning updates; expect a 2–3× drop once
+These exclude network inference and learning updates; expect a 2-3× drop once
 those are included. Scaling flattens above 4 processes on this contended machine.
 
 ## Training machine (4P+6E cores, 16 GB, Python 3.13)
@@ -45,7 +45,7 @@ engine functions do the work; only their input lists shrink.
 
 **Parity:** `--parity 10 --ticks 6000` gave bit-identical position, velocity,
 alive state and score on every tick of 10 full games with a fast,
-collision-heavy deterministic policy (64–109 deaths per game).
+collision-heavy deterministic policy (64-109 deaths per game).
 
 | Training machine, `wiggle` policy, 6,000 ticks | Ticks/s |
 |---|---:|

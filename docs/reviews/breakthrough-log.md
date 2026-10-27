@@ -2,11 +2,11 @@
 
 Working log of the breakthrough experiments. Incumbent: b1 (goal action space), released
 snapshot u960; diagnosis on u1080. All judgements use `tools/ab_compare.py` (paired, seeds
-3000–3063, both sides = 128 games per opponent, sampled decoding on both arms) unless stated.
+3000-3063, both sides = 128 games per opponent, sampled decoding on both arms) unless stated.
 
 ## 1. Diagnosis: b1 u1080 (sampled) vs relay and balanced
 
-Tool: `tools/diag_match.py` (new). Seeds 4000–4031 × both sides = 64 games per opponent,
+Tool: `tools/diag_match.py` (new). Seeds 4000-4031 × both sides = 64 games per opponent,
 full simulator state used for analysis only.
 
 | per match | us vs relay | relay | us vs balanced | balanced |
@@ -60,7 +60,7 @@ last layer by tau, so sampling the copy is sampling at temperature tau; the expo
 elsewhere (guardian −0.19, n.s.). Mean dGD over the six opponents +0.67. Applies to any
 snapshot; all later training comparisons are judged at tau 0.7 as well as tau 1.
 
-**Per-head temperature on b1 u1540** (reference: u1540 at tau 0.7 on all heads, seeds 3000–3063;
+**Per-head temperature on b1 u1540** (reference: u1540 at tau 0.7 on all heads, seeds 3000-3063;
 taus are heading / speed / jump):
 
 | candidate | relay dGD [CI] | balanced dGD [CI] |
@@ -83,8 +83,8 @@ same 15 matches per update as b1's 5 × 3. **Control = b1's own continuation** f
 
 | id | hypothesis | change (one) | result |
 |---|---|---|---|
-| x1 | A MAPPO critic that also sees both teammates' features (training only) assigns credit for coordination (waiter, home duels) better | `--team-critic 1` (critic input = own + teammates' features in player order + alive flags; widened from b1's critic with zero weights so it starts as the same function; Adam moments zero-padded) | **No gain.** Explained variance not higher (0.661 vs b1 0.681 over u1341–1540). Held-out at u1540, both at tau 0.7: relay dGD **−0.88 [−1.78, +0.08]**, dWin −0.18 [−0.27, −0.09]; balanced −0.27 [−1.12, +0.61]. x1 u1540 ≈ the u1340 starting point (relay −1.28 vs −1.02); b1 itself moved +0.62 (n.s.) / +14 pp wins over the same 200 updates. Stopped. |
-| x3 | If tau 0.7 is the better policy, keep training *that* policy on-policy (teammates and league see the deployed behaviour) | resume from the checkpoint with the actor's last layer divided by 0.7 (`tools/temper_ckpt.py`) | **Clearly worse.** Training stats start strong (first 100 updates: relay −0.8, balanced +0.3, guardian +3.5) then decay (relay −2.7 / −3.1); entropy climbs 0.94 → 1.1 and clip fraction runs at 0.15–0.29. Held-out u1540 (native) vs b1 u1540 at tau 0.7: relay **−2.16 [−3.12, −1.19]**, balanced **−1.64 [−2.47, −0.78]**. Temperature is a deployment-time setting only; PPO on the sharpened policy destroys the gain. Stopped. |
+| x1 | A MAPPO critic that also sees both teammates' features (training only) assigns credit for coordination (waiter, home duels) better | `--team-critic 1` (critic input = own + teammates' features in player order + alive flags; widened from b1's critic with zero weights so it starts as the same function; Adam moments zero-padded) | **No gain.** Explained variance not higher (0.661 vs b1 0.681 over u1341-1540). Held-out at u1540, both at tau 0.7: relay dGD **−0.88 [−1.78, +0.08]**, dWin −0.18 [−0.27, −0.09]; balanced −0.27 [−1.12, +0.61]. x1 u1540 ≈ the u1340 starting point (relay −1.28 vs −1.02); b1 itself moved +0.62 (n.s.) / +14 pp wins over the same 200 updates. Stopped. |
+| x3 | If tau 0.7 is the better policy, keep training *that* policy on-policy (teammates and league see the deployed behaviour) | resume from the checkpoint with the actor's last layer divided by 0.7 (`tools/temper_ckpt.py`) | **Clearly worse.** Training stats start strong (first 100 updates: relay −0.8, balanced +0.3, guardian +3.5) then decay (relay −2.7 / −3.1); entropy climbs 0.94 → 1.1 and clip fraction runs at 0.15-0.29. Held-out u1540 (native) vs b1 u1540 at tau 0.7: relay **−2.16 [−3.12, −1.19]**, balanced **−1.64 [−2.47, −0.78]**. Temperature is a deployment-time setting only; PPO on the sharpened policy destroys the gain. Stopped. |
 | x2 | Duels are asymmetric in the reward (death −0.1, a kill earns nothing unless it is the carrier), so the policy under-values winning home-zone duels / denying the waiter | `"kill": 0.1` reward weight: an enemy eliminated by collision (the enemy's own documented death message) credits our closest living sphere (`ctf/rewards.py`) | **Neutral.** Enemy kills per match unchanged in training (16.9 → 17.0 vs b1 17.1 → 17.4); held-out u1540 at tau 0.7 vs b1: relay −0.07 [−1.05, +0.93], balanced +0.25 [−0.67, +1.12]. Also a de-facto replicate of the b1 continuation: run-to-run spread over 200 updates is of the order of ±1 GD, so x1's −0.88 is at most weak evidence of harm. Stopped. |
 
 ## 3. Conclusions (27 Oct, ~03:50 UTC)
@@ -102,7 +102,7 @@ same 15 matches per update as b1's 5 × 3. **Control = b1's own continuation** f
 - **Pending (training machine went offline ~01:50 UTC):** `runs/xev5` refines the speed temperature
   (0.7/0.35/0.7 and 0.6/0.5/0.7 vs 0.7/0.5/0.7); results in `runs/xeval/ev5.json`.
   Not yet done: a confirmation of the chosen per-head temperatures on *fresh* seeds
-  (e.g. 3100–3163, all six opponents) to remove the selection bias of the sweep.
+  (e.g. 3100-3163, all six opponents) to remove the selection bias of the sweep.
 
 **Recommendation:** release the newest good b1 snapshot (u1540 tested here) through
 `tools/temper.py --tau 0.7,0.5,0.7` (or `--tau 0.7` if the fresh-seed confirmation does

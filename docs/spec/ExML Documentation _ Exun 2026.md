@@ -1,4 +1,4 @@
-# ExML | Exun 2026–27 — Model and Environment Specification
+# ExML | Exun 2026-27: Model and Environment Specification
 
 This local copy contains the model-relevant contract and is intended to be read without fetching external documentation. See [`ExML Prompt _ Exun 2026.md`](ExML%20Prompt%20_%20Exun%202026.md) for the short task and match summary.
 

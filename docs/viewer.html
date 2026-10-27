@@ -177,7 +177,7 @@
     <div id="error"></div>
     <div id="drop">
       <b>Drop a replay JSON here</b>
-      <span>or use <u>Open…</u> — produced by <code>python tools/replay.py A B --out replay.json</code></span>
+      <span>or use <u>Open…</u>, produced by <code>python tools/replay.py A B --out replay.json</code></span>
     </div>
   </div>
   <aside>
@@ -979,8 +979,8 @@ function App() {
 // Data comes from docs/gallery/data/gallery.js (tools/gallery.py); each replay is a
 // separate <script> that sets window.REPLAYS[id], so it all works over file://.
 const RUN_COLORS = ["#8a93a6", "#c08cff", "#4fa3ff", "#5fd3c8", "#e5b454", "#ff8f5f", "#5fd38a", "#ff7fb0", "#b7d35f"];
-const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
-const sgn = v => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(1);
+const pct = v => v == null ? "-" : Math.round(v * 100) + "%";
+const sgn = v => v == null ? "-" : (v > 0 ? "+" : "") + v.toFixed(1);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function heat(w) {
@@ -1051,7 +1051,7 @@ function Gallery(G, st, autoload) {
   const histOpts = { opp: (G.opponents || [])[0] || "relay", metric: "w" };
 
   function resultChip(r) {
-    return '<span class="res ' + r.result + '">' + r.score_a + "–" + r.score_b + " " + r.result[0].toUpperCase() + "</span>";
+    return '<span class="res ' + r.result + '">' + r.score_a + "-" + r.score_b + " " + r.result[0].toUpperCase() + "</span>";
   }
 
   function open(id) {
@@ -1173,7 +1173,7 @@ function Gallery(G, st, autoload) {
 
     // snapshot table
     h += '<h3>Every evaluated snapshot</h3><p class="muted" style="margin:-4px 0 8px">Held-out gauntlet, win rate and goal difference per opponent. ' +
-      'Rows with ▶ have recorded replays — click to watch.</p><table class="ht"><tr><th>run</th><th>snapshot</th><th>samples</th>' +
+      'Rows with ▶ have recorded replays, click to watch.</p><table class="ht"><tr><th>run</th><th>snapshot</th><th>samples</th>' +
       opps.map(o => "<th>" + esc(o) + "</th>").join("") + "<th>replays</th></tr>";
     runs.slice().reverse().forEach(r => {
       const us = Array.from(new Set(r.evals.map(e => e.u).concat(Object.values(replays).filter(x => x.run === r.name).map(x => x.update)))).sort((a, b) => b - a);

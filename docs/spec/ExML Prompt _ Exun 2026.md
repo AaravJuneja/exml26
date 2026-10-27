@@ -1,4 +1,4 @@
-# ExML | Exun 2026–27 — Model Task
+# ExML | Exun 2026-27: Model Task
 
 ## Task
 
