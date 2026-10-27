@@ -1,5 +1,5 @@
 {
- "summary": "<b>Main release: teams/exml_rl = plan B, weight average of 94 snapshots (b1 updates 160\u20132030), sampled at temperature 0.7 \u2014 87% wins on 640 held-out games</b>; <b>beats relay (52%, GD +1.38)</b>, balanced 67% (+1.86), guardian/chaos 84%, rusher/camper 92%, steady and provided bots 100%. Confirmed vs the previous release on two fresh seed sets: +1.37 and +1.35 GD per match.<br><br><b>Pure end-to-end release teams/exml_rl_pure: student re-distilled from the averaged main policy, weight-averaged (snapshots 350\u2013450) at temperature 0.7 \u2014 80% held-out</b> (rusher 89%, chaos 88%, camper 78%, guardian 73%, balanced 41%, relay 38%); confirmed +1.64 / +1.45 GD vs the previous pure release on two fresh seed sets.<br><br>Deadline: experiment freeze 21:30 IST, final verification and push by 23:30.",
+ "summary": "<b>Main release: teams/exml_rl = plan B, weight average of 94 snapshots (b1 updates 160\u20132030), sampled at temperature 0.7 \u2014 87% wins on 640 held-out games</b>; <b>beats relay (52%, GD +1.38)</b>, balanced 67% (+1.86), guardian/chaos 84%, rusher/camper 92%, steady and provided bots 100%. Confirmed vs the previous release on two fresh seed sets: +1.37 and +1.35 GD per match.<br><br><b>Pure end-to-end release teams/exml_rl_pure: student re-distilled from the averaged main policy, weight-averaged (snapshots 350\u2013450) at temperature 0.7 \u2014 80% held-out</b> (rusher 89%, chaos 88%, camper 78%, guardian 73%, balanced 41%, relay 38%); confirmed +1.64 / +1.45 GD vs the previous pure release on two fresh seed sets.<br><br><b>Final (27 Oct 20:41 IST):</b> verified from a fresh clone of GitHub main \u2014 engine untouched, both reports PASS, official main.py matches, 187 tests pass.",
  "milestones": [
   {
    "id": "M0",
@@ -233,6 +233,10 @@
   {
    "time": "2026-10-27 20:20",
    "text": "Released the re-distilled pure network (d5, averaged u350\u2013450, \u03c40.7): 80% held-out (from 71%). Experiments frozen."
+  },
+  {
+   "time": "2026-10-27 20:41",
+   "text": "Final verification passed from a fresh clone. Submissions final: teams/exml_rl (87%) and teams/exml_rl_pure (80%)."
   }
  ]
 }
