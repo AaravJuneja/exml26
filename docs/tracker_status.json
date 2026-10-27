@@ -1,5 +1,5 @@
 {
- "summary": "<b>Main release: teams/exml_rl = plan B, b1 u1440 sampled at temperature 0.7 \u2014 81% wins on 640 held-out games</b> (previous u960: 72%; pure RL: 54%). relay 39% (GD \u22120.1), balanced 48% (+0.3), guardian 73%, rusher 83%, camper 86%, chaos 81%, steady 97%, provided bots 98\u2013100%. Latency (laptop) p99 2.5 ms, max 19.7 ms under stress; audit and parity pass.<br><br>Architecture: a learned desired-velocity policy (PPO, heading/speed/jump each tick) with a deterministic physics actuator, kickstarted from a scripted teacher, then RL. <b>Kept:</b> pure end-to-end RL release teams/exml_rl_pure (54%). <b>Open issue:</b> wall deaths drift up in later training (0.03 \u2192 0.6/pl). training-machine use stopped 06:25 IST 27 Oct; work continues on the laptop.",
+ "summary": "<b>Main release: teams/exml_rl = plan B, b1 u1440 sampled at temperature 0.7 \u2014 81% wins on 640 held-out games</b> (previous u960: 72%; pure RL: 54%). relay 39% (GD \u22120.1), balanced 48% (+0.3), guardian 73%, rusher 83%, camper 86%, chaos 81%, steady 97%, provided bots 98\u2013100%. Latency (laptop) p99 2.5 ms, max 19.7 ms under stress; audit and parity pass.<br><br>Architecture: a learned desired-velocity policy (PPO, heading/speed/jump each tick) with a deterministic physics actuator, kickstarted from a scripted teacher, then RL. <b>Pure end-to-end release teams/exml_rl_pure: distilled student d4, 67% held-out</b> (previous pure release 54%). <b>Open issue:</b> wall deaths drift up in later training (0.03 \u2192 0.6/pl). training-machine use stopped 06:25 IST 27 Oct; work continues on the laptop.",
  "milestones": [
   {
    "id": "M0",
@@ -41,7 +41,7 @@
    "id": "M6",
    "title": "Freeze, export, final 64-seed test, latency audit",
    "state": "active",
-   "note": "teams/exml_rl = plan B u1440 \u03c40.7 (81% held-out); teams/exml_rl_pure = pure RL (54%)"
+   "note": "teams/exml_rl = plan B u1440 \u03c40.7 (81% held-out); teams/exml_rl_pure = distilled pure network d4 (67%)"
   }
  ],
  "eval_header": [
@@ -213,6 +213,10 @@
   {
    "time": "2026-10-27 07:45",
    "text": "Re-released teams/exml_rl = b1 u1440 at temperature 0.7: 81% held-out (from 72%); relay 39%, balanced 48%."
+  },
+  {
+   "time": "2026-10-27 11:50",
+   "text": "Released the distilled pure network as teams/exml_rl_pure: 67% held-out (from 54%). Fixed a ~15 ms first-call latency spike in sampled exports. Wall-death fine-tune and per-head temperature tested: no gain."
   }
  ]
 }

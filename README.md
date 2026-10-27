@@ -15,11 +15,10 @@ Two releases, each one stdlib + numpy file exposing `decide(observation)`:
 | Release | Architecture | Held-out (640 games) |
 |---|---|---|
 | [`teams/exml_rl/model.py`](teams/exml_rl/model.py) (**main**) | Learned desired-velocity policy: the PPO network chooses heading, speed and jump every tick; a deterministic physics actuator (`ctf/controller.py`, inlined) turns that into throttle/turn. Kickstarted from a scripted teacher, then RL with a self-play league. Sampled at temperature 0.7 (b1 update 1440). | **81% wins** (baseline/example 100%, camper 86%, rusher 83%, chaos 81%, guardian 73%, balanced 48%, relay 39%) |
-| [`teams/exml_rl_pure/model.py`](teams/exml_rl_pure/model.py) | Pure end-to-end PPO network outputting throttle/turn/jump directly. Greedy decoding. | 54% wins |
+| [`teams/exml_rl_pure/model.py`](teams/exml_rl_pure/model.py) | Pure end-to-end network outputting throttle/turn/jump directly (no hand-written controller): the plan-B policy distilled into a bins-action student (soft labels through the controller, b1's hidden layers as initialisation) and then trained with PPO plus a fading distillation term. Sampled decoding. | **67% wins** (baseline/example 100%, steady 88%, rusher 66%, chaos 66%, camper 58%, guardian 47%, balanced 27%, relay 19%) |
 
 Audit, deployed-file parity, latency and gauntlet results are in each folder's
-`release_report.json`. A distilled pure end-to-end version of the main policy is in
-progress.
+`release_report.json`. The earlier pure-RL release (54%) is in git history.
 
 ## Layout
 

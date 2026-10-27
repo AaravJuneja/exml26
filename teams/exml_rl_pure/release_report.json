@@ -1,35 +1,280 @@
 {
- "name": "exml_rl",
- "date": "2026-10-26T08:44:44+00:00",
+ "name": "exml_rl_pure",
+ "date": "2026-10-27T04:54:51+00:00",
  "argv": [
-  "runs/m4c/policies/u00210.npz",
+  "runs/release-d4/d4_u150.npz",
   "--name",
-  "exml_rl",
+  "exml_rl_pure",
+  "--decode",
+  "sample",
   "--workers",
-  "3",
+  "5",
   "--stress",
-  "6",
-  "--py39",
-  ".venv39/bin/python"
+  "3",
+  "--docs",
+  ""
  ],
- "host": "training-machine",
- "python": "3.14.9",
+ "host": "omen",
+ "python": "3.14.7",
  "policy": {
-  "source": "runs/m4c/policies/u00210.npz",
-  "run": "m4c",
-  "update": 210,
-  "samples": 61580067,
+  "source": "runs/release-d4/d4_u150.npz",
+  "run": "d4",
+  "update": 150,
+  "samples": 35893967,
   "arch": "mlp",
-  "sha256": "462df5361ce54b41a3112f2652d430a410e30fefc1aa721f03c581c83d41af0d",
-  "policy_copy": "teams/exml_rl/policy.npz",
-  "model": "teams/exml_rl/model.py",
-  "model_sha256": "46767117921d76c23a05b78e8b21191fe764e47becec17af14abe0b402f6b9eb",
-  "model_kib": 624.8,
-  "decode": "greedy",
-  "date": "2026-10-26T08:44:44+00:00",
+  "sha256": "a94c4403d7f658eb1371e73032ddc5056b8afa4bad5261ff390f32e4391bc9c1",
+  "policy_copy": "teams/exml_rl_pure/policy.npz",
+  "model": "teams/exml_rl_pure/model.py",
+  "model_sha256": "a94dc1906405d33ad03fbcc41faab47a1a2e9f2103e606fe47aafb49f38e2f9c",
+  "parity_model": "teams/exml_rl_pure/.parity_greedy_model.py",
+  "model_kib": 661.3,
+  "decode": "sample",
+  "date": "2026-10-27T04:54:51+00:00",
   "meta": {
    "arch": "mlp",
-   "feature_dim": 191,
+   "feature_dim": 209,
+   "feature_version": 5,
+   "feature_names": [
+    "self.x",
+    "self.y",
+    "self.z",
+    "self.vfwd",
+    "self.vright",
+    "self.vz",
+    "self.speed",
+    "self.lethal",
+    "self.yaw_sin",
+    "self.yaw_cos",
+    "self.grounded",
+    "self.carrying",
+    "self.edge_px",
+    "self.edge_nx",
+    "self.edge_py",
+    "self.edge_ny",
+    "self.player1",
+    "self.player2",
+    "self.player3",
+    "self.gap",
+    "self.dspeed",
+    "self.side_known",
+    "game.tick",
+    "game.lead",
+    "game.mine",
+    "game.theirs",
+    "game.dead_mates",
+    "own_flag.fwd",
+    "own_flag.right",
+    "own_flag.dist",
+    "own_flag.at_home",
+    "own_flag.carried",
+    "own_flag.vfwd",
+    "own_flag.vright",
+    "enemy_flag.seen",
+    "enemy_flag.fwd",
+    "enemy_flag.right",
+    "enemy_flag.dist",
+    "enemy_flag.at_home",
+    "enemy_flag.mine",
+    "enemy_flag.mate",
+    "own_home.known",
+    "own_home.fwd",
+    "own_home.right",
+    "own_home.dist",
+    "enemy_home.known",
+    "enemy_home.fwd",
+    "enemy_home.right",
+    "enemy_home.dist",
+    "enemy0.present",
+    "enemy0.age",
+    "enemy0.fwd",
+    "enemy0.right",
+    "enemy0.dist",
+    "enemy0.rvfwd",
+    "enemy0.rvright",
+    "enemy0.speed",
+    "enemy0.speed_adv",
+    "enemy0.carrying",
+    "enemy0.dz",
+    "enemy0.yaw_sin",
+    "enemy0.yaw_cos",
+    "enemy0.grounded",
+    "enemy1.present",
+    "enemy1.age",
+    "enemy1.fwd",
+    "enemy1.right",
+    "enemy1.dist",
+    "enemy1.rvfwd",
+    "enemy1.rvright",
+    "enemy1.speed",
+    "enemy1.speed_adv",
+    "enemy1.carrying",
+    "enemy1.dz",
+    "enemy1.yaw_sin",
+    "enemy1.yaw_cos",
+    "enemy1.grounded",
+    "enemy2.present",
+    "enemy2.age",
+    "enemy2.fwd",
+    "enemy2.right",
+    "enemy2.dist",
+    "enemy2.rvfwd",
+    "enemy2.rvright",
+    "enemy2.speed",
+    "enemy2.speed_adv",
+    "enemy2.carrying",
+    "enemy2.dz",
+    "enemy2.yaw_sin",
+    "enemy2.yaw_cos",
+    "enemy2.grounded",
+    "bump0.present",
+    "bump0.fwd",
+    "bump0.right",
+    "bump1.present",
+    "bump1.fwd",
+    "bump1.right",
+    "bump2.present",
+    "bump2.fwd",
+    "bump2.right",
+    "bump3.present",
+    "bump3.fwd",
+    "bump3.right",
+    "bump4.present",
+    "bump4.fwd",
+    "bump4.right",
+    "bump5.present",
+    "bump5.fwd",
+    "bump5.right",
+    "bump6.present",
+    "bump6.fwd",
+    "bump6.right",
+    "bump7.present",
+    "bump7.fwd",
+    "bump7.right",
+    "bump8.present",
+    "bump8.fwd",
+    "bump8.right",
+    "bump9.present",
+    "bump9.fwd",
+    "bump9.right",
+    "bump10.present",
+    "bump10.fwd",
+    "bump10.right",
+    "bump11.present",
+    "bump11.fwd",
+    "bump11.right",
+    "danger0.present",
+    "danger0.fwd",
+    "danger0.right",
+    "danger0.age",
+    "danger0.not_wall",
+    "danger1.present",
+    "danger1.fwd",
+    "danger1.right",
+    "danger1.age",
+    "danger1.not_wall",
+    "danger2.present",
+    "danger2.fwd",
+    "danger2.right",
+    "danger2.age",
+    "danger2.not_wall",
+    "danger3.present",
+    "danger3.fwd",
+    "danger3.right",
+    "danger3.age",
+    "danger3.not_wall",
+    "ray.fwd",
+    "ray.r45",
+    "ray.l45",
+    "ray.r90",
+    "ray.l90",
+    "ray.r135",
+    "ray.l135",
+    "ray.back",
+    "ray.motion",
+    "ray.motion_blocked",
+    "ray.known_free",
+    "team.mate_a_carrying",
+    "team.mate_b_carrying",
+    "team.mate_a_respawn",
+    "team.mate_b_respawn",
+    "team.home_enemy_dist",
+    "team.home_enemy_count",
+    "team.flag_closing",
+    "team.enemy_flag_waited",
+    "trail20.fwd",
+    "trail20.right",
+    "trail60.fwd",
+    "trail60.right",
+    "trail60.path",
+    "trail.fill",
+    "stuck.duration",
+    "nbump.normal_fwd",
+    "nbump.normal_right",
+    "nbump.age",
+    "nbump.dist",
+    "collide.present",
+    "collide.time",
+    "collide.dist",
+    "collide.speed_adv",
+    "carrier.escape_dist",
+    "carrier.escape_speed",
+    "carrier.home_known",
+    "prev.throttle=-1.0",
+    "prev.throttle=-0.3",
+    "prev.throttle=-0.1",
+    "prev.throttle=-0.05",
+    "prev.throttle=-0.034",
+    "prev.throttle=0.0",
+    "prev.throttle=0.015",
+    "prev.throttle=0.025",
+    "prev.throttle=0.034",
+    "prev.throttle=0.037",
+    "prev.throttle=0.05",
+    "prev.throttle=0.06",
+    "prev.throttle=0.1",
+    "prev.throttle=0.3",
+    "prev.throttle=1.0",
+    "prev.turn=-1.0",
+    "prev.turn=-0.6",
+    "prev.turn=-0.3",
+    "prev.turn=-0.1",
+    "prev.turn=0.0",
+    "prev.turn=0.1",
+    "prev.turn=0.3",
+    "prev.turn=0.6",
+    "prev.turn=1.0",
+    "prev.jump"
+   ],
+   "action_tables": {
+    "throttle": [
+     -1.0,
+     -0.3,
+     -0.1,
+     -0.05,
+     -0.034,
+     0.0,
+     0.015,
+     0.025,
+     0.034,
+     0.037,
+     0.05,
+     0.06,
+     0.1,
+     0.3,
+     1.0
+    ],
+    "turn": [
+     -1.0,
+     -0.6,
+     -0.3,
+     -0.1,
+     0.0,
+     0.1,
+     0.3,
+     0.6,
+     1.0
+    ]
+   },
    "head_sizes": [
     15,
     9,
@@ -38,10 +283,9 @@
    "n_throttle": 15,
    "n_turn": 9,
    "activation": "tanh",
-   "feature_version": 4,
-   "run": "m4c",
-   "update": 210,
-   "samples": 61580067
+   "run": "d4",
+   "update": 150,
+   "samples": 35893967
   }
  },
  "audit": {
@@ -66,18 +310,14 @@
   ],
   "comment_mentions": [
    {
-    "line": 538,
+    "line": 665,
     "word": "teammates"
    }
   ],
-  "size_kib": 624.8,
+  "size_kib": 661.3,
   "py39": {
-   "python": ".venv39/bin/python",
-   "version": "3.9.25",
-   "numpy": "2.0.2",
-   "pass": true,
-   "calls": 40,
-   "identical_to_current_python": true
+   "pass": null,
+   "reason": "no interpreter at '.venv39/bin/python'"
   }
  },
  "parity": {
@@ -90,9 +330,9 @@
    5001
   ],
   "max_ticks": 6000,
-  "deployed": "teams/exml_rl/model.py@proc",
-  "reference": "teams/exml_rl/policy.npz@greedy",
-  "n_identical": 4,
+  "deployed": "teams/exml_rl_pure/.parity_greedy_model.py@proc",
+  "reference": "teams/exml_rl_pure/policy.npz@greedy",
+  "n_identical": 3,
   "games": [
    {
     "seed": 5000,
@@ -100,21 +340,39 @@
     "identical": true,
     "status": "identical",
     "differs_in": [],
-    "score": "8-4",
-    "reference_score": "8-4",
+    "score": "12-3",
+    "reference_score": "12-3",
     "deployed_errors": 0,
-    "deployed_decide_p99_ms": 12.3422
+    "deployed_decide_p99_ms": 2.6317
    },
    {
     "seed": 5000,
     "side": "blue",
-    "identical": true,
-    "status": "identical",
-    "differs_in": [],
-    "score": "8-4",
-    "reference_score": "8-4",
+    "identical": false,
+    "status": "near_tie",
+    "differs_in": [
+     "b"
+    ],
+    "score": "11-3",
+    "reference_score": "11-3",
     "deployed_errors": 0,
-    "deployed_decide_p99_ms": 12.4644
+    "deployed_decide_p99_ms": 2.6383,
+    "divergence": {
+     "tick": 5640,
+     "sphere": 5,
+     "heads": [
+      {
+       "head": "turn",
+       "reference": 0,
+       "model": 8,
+       "logit_gap": 7.152557373046875e-07
+      }
+     ],
+     "model_vs_single_row_max_abs": 0.0,
+     "batched_vs_single_row_max_abs": 4.291534423828125e-06,
+     "explained": true
+    },
+    "deployed_equals_inprocess": true
    },
    {
     "seed": 5001,
@@ -122,10 +380,10 @@
     "identical": true,
     "status": "identical",
     "differs_in": [],
-    "score": "10-5",
-    "reference_score": "10-5",
+    "score": "17-0",
+    "reference_score": "17-0",
     "deployed_errors": 0,
-    "deployed_decide_p99_ms": 12.3509
+    "deployed_decide_p99_ms": 2.5669
    },
    {
     "seed": 5001,
@@ -133,10 +391,10 @@
     "identical": true,
     "status": "identical",
     "differs_in": [],
-    "score": "10-2",
-    "reference_score": "10-2",
+    "score": "19-0",
+    "reference_score": "19-0",
     "deployed_errors": 0,
-    "deployed_decide_p99_ms": 15.4539
+    "deployed_decide_p99_ms": 2.6032
    }
   ]
  },
@@ -156,25 +414,25 @@
      "all_pass": true
     },
     "callback": {
-     "n": 34380,
-     "mean_ms": 0.1406,
-     "p50_ms": 0.1243,
-     "p90_ms": 0.1957,
-     "p99_ms": 0.3303,
-     "p99.9_ms": 1.6137,
-     "max_ms": 10.1955,
-     "over_10ms": 2,
+     "n": 33300,
+     "mean_ms": 1.3056,
+     "p50_ms": 1.2449,
+     "p90_ms": 1.874,
+     "p99_ms": 2.4418,
+     "p99.9_ms": 3.2673,
+     "max_ms": 5.2396,
+     "over_10ms": 0,
      "over_20ms": 0,
      "over_30ms": 0
     },
     "inprocess_decide": {
-     "n": 5760,
-     "mean_ms": 0.0326,
-     "p50_ms": 0.032,
-     "p90_ms": 0.0377,
-     "p99_ms": 0.0411,
-     "p99.9_ms": 0.0849,
-     "max_ms": 0.182,
+     "n": 5663,
+     "mean_ms": 0.189,
+     "p50_ms": 0.1789,
+     "p90_ms": 0.2322,
+     "p99_ms": 0.3136,
+     "p99.9_ms": 0.3983,
+     "max_ms": 0.6395,
      "over_10ms": 0,
      "over_20ms": 0,
      "over_30ms": 0
@@ -182,16 +440,95 @@
     "timeouts_or_respawns": 0,
     "scores": [
      {
-      "red": 4,
-      "blue": 6
+      "red": 15,
+      "blue": 11
      }
     ],
-    "cpu_count": 10,
-    "python": "3.14.9"
+    "cpu_count": 6,
+    "python": "3.14.7",
+    "summary": {
+     "policy": "teams/exml_rl_pure/model.py",
+     "model_kib": 661.3,
+     "decode": "greedy",
+     "stress_procs": 0,
+     "cpu_count": 6,
+     "python": "3.14.7",
+     "thread_env_kept": false,
+     "inprocess": {
+      "import_s": 0.0861,
+      "decide": {
+       "n": 5663,
+       "mean_ms": 0.189,
+       "p50_ms": 0.1789,
+       "p90_ms": 0.2322,
+       "p99_ms": 0.3136,
+       "p99.9_ms": 0.3983,
+       "max_ms": 0.6395,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      }
+     },
+     "engine": {
+      "callback": {
+       "n": 33300,
+       "mean_ms": 1.3056,
+       "p50_ms": 1.2449,
+       "p90_ms": 1.874,
+       "p99_ms": 2.4418,
+       "p99.9_ms": 3.2673,
+       "max_ms": 5.2396,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      },
+      "timeouts_or_respawns": 0,
+      "harness_exceptions": 0,
+      "idle_results": 0,
+      "decide_errors_reported": 0,
+      "load_failures": 0,
+      "tracebacks": 0,
+      "worker_stderr_tail": "warn: placed 11/12 ramps (seed=1)\n",
+      "ready_s": {
+       "max": 0.301,
+       "mean": 0.289
+      },
+      "game_construct_s": [
+       0.321
+      ],
+      "step": {
+       "n": 6000,
+       "mean_ms": 3.3009,
+       "p50_ms": 3.3216,
+       "p90_ms": 3.9464,
+       "p99_ms": 4.8334,
+       "p99.9_ms": 6.4831,
+       "max_ms": 8.5781,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      },
+      "scores": [
+       {
+        "red": 15,
+        "blue": 11
+       }
+      ]
+     },
+     "verdict": {
+      "callback_p99_le_10ms": true,
+      "callback_max_le_20ms": true,
+      "zero_timeouts": true,
+      "model_loaded": true,
+      "zero_model_errors": true,
+      "decide_p99_le_3ms": true,
+      "all_pass": true
+     }
+    }
    },
    {
     "ticks": 6000,
-    "stress_procs": 6,
+    "stress_procs": 3,
     "pass": true,
     "verdict": {
      "callback_p99_le_10ms": true,
@@ -203,25 +540,25 @@
      "all_pass": true
     },
     "callback": {
-     "n": 34787,
-     "mean_ms": 0.3166,
-     "p50_ms": 0.2772,
-     "p90_ms": 0.4737,
-     "p99_ms": 0.8763,
-     "p99.9_ms": 1.6632,
-     "max_ms": 4.6133,
+     "n": 33480,
+     "mean_ms": 1.0213,
+     "p50_ms": 0.9505,
+     "p90_ms": 1.5828,
+     "p99_ms": 2.2412,
+     "p99.9_ms": 2.9777,
+     "max_ms": 6.2913,
      "over_10ms": 0,
      "over_20ms": 0,
      "over_30ms": 0
     },
     "inprocess_decide": {
-     "n": 5760,
-     "mean_ms": 0.0325,
-     "p50_ms": 0.0321,
-     "p90_ms": 0.0378,
-     "p99_ms": 0.0415,
-     "p99.9_ms": 0.0828,
-     "max_ms": 0.1402,
+     "n": 5663,
+     "mean_ms": 0.1561,
+     "p50_ms": 0.1472,
+     "p90_ms": 0.1945,
+     "p99_ms": 0.2577,
+     "p99.9_ms": 0.3708,
+     "max_ms": 0.4727,
      "over_10ms": 0,
      "over_20ms": 0,
      "over_30ms": 0
@@ -229,19 +566,102 @@
     "timeouts_or_respawns": 0,
     "scores": [
      {
-      "red": 2,
-      "blue": 5
+      "red": 15,
+      "blue": 8
      }
     ],
-    "cpu_count": 10,
-    "python": "3.14.9"
+    "cpu_count": 6,
+    "python": "3.14.7",
+    "summary": {
+     "policy": "teams/exml_rl_pure/model.py",
+     "model_kib": 661.3,
+     "decode": "greedy",
+     "stress_procs": 3,
+     "cpu_count": 6,
+     "python": "3.14.7",
+     "thread_env_kept": false,
+     "inprocess": {
+      "import_s": 0.0717,
+      "decide": {
+       "n": 5663,
+       "mean_ms": 0.1561,
+       "p50_ms": 0.1472,
+       "p90_ms": 0.1945,
+       "p99_ms": 0.2577,
+       "p99.9_ms": 0.3708,
+       "max_ms": 0.4727,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      }
+     },
+     "engine": {
+      "callback": {
+       "n": 33480,
+       "mean_ms": 1.0213,
+       "p50_ms": 0.9505,
+       "p90_ms": 1.5828,
+       "p99_ms": 2.2412,
+       "p99.9_ms": 2.9777,
+       "max_ms": 6.2913,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      },
+      "timeouts_or_respawns": 0,
+      "harness_exceptions": 0,
+      "idle_results": 0,
+      "decide_errors_reported": 0,
+      "load_failures": 0,
+      "tracebacks": 0,
+      "worker_stderr_tail": "warn: placed 11/12 ramps (seed=1)\n",
+      "ready_s": {
+       "max": 0.26,
+       "mean": 0.255
+      },
+      "game_construct_s": [
+       0.278
+      ],
+      "step": {
+       "n": 6000,
+       "mean_ms": 3.0439,
+       "p50_ms": 3.0058,
+       "p90_ms": 3.6782,
+       "p99_ms": 4.5566,
+       "p99.9_ms": 6.3287,
+       "max_ms": 8.4173,
+       "over_10ms": 0,
+       "over_20ms": 0,
+       "over_30ms": 0
+      },
+      "scores": [
+       {
+        "red": 15,
+        "blue": 8
+       }
+      ]
+     },
+     "verdict": {
+      "callback_p99_le_10ms": true,
+      "callback_max_le_20ms": true,
+      "zero_timeouts": true,
+      "model_loaded": true,
+      "zero_model_errors": true,
+      "decide_p99_le_3ms": true,
+      "all_pass": true
+     }
+    }
    }
   ],
-  "training_paused": true,
-  "note": "Re-measured 2026-10-27 with training paused (same protocol as teams/exml_rl); the first measurement ran on a fully loaded machine and is kept as latency_initial_loaded_machine."
+  "load_before": [
+   3.28,
+   3.26,
+   4.29
+  ],
+  "training_paused": false
  },
  "strength": {
-  "spec": "teams/exml_rl/model.py@doc",
+  "spec": "teams/exml_rl_pure/model.py@doc",
   "seeds": "5000-5031",
   "max_ticks": 6000,
   "opponents": [
@@ -260,62 +680,25 @@
    {
     "opponent": "baseline",
     "n": 64,
-    "wins": 59,
-    "draws": 2,
-    "losses": 3,
-    "win_rate": 0.9219,
-    "win_rate_ci": [
-     0.8594,
-     0.9844
-    ],
-    "goal_diff": 3.4688,
-    "goal_diff_ci": [
-     2.8281,
-     4.125
-    ],
-    "goals_for": 6.4844,
-    "goals_against": 3.0156,
-    "per_side": {
-     "red": {
-      "wins": 28,
-      "draws": 2,
-      "losses": 2
-     },
-     "blue": {
-      "wins": 31,
-      "draws": 0,
-      "losses": 1
-     }
-    },
-    "wall_deaths_pp": 1.2865,
-    "conversion": 0.6577,
-    "errors": 0,
-    "opponent_errors": 0,
-    "decide_p99_ms_max": 4.9706,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_baseline.jsonl"
-   },
-   {
-    "opponent": "example",
-    "n": 64,
-    "wins": 62,
-    "draws": 2,
+    "wins": 64,
+    "draws": 0,
     "losses": 0,
-    "win_rate": 0.9688,
+    "win_rate": 1.0,
     "win_rate_ci": [
-     0.9219,
+     1.0,
      1.0
     ],
-    "goal_diff": 5.4688,
+    "goal_diff": 10.2188,
     "goal_diff_ci": [
-     4.9375,
-     6.0156
+     8.984,
+     11.5312
     ],
-    "goals_for": 5.75,
-    "goals_against": 0.2812,
+    "goals_for": 12.3594,
+    "goals_against": 2.1406,
     "per_side": {
      "red": {
-      "wins": 30,
-      "draws": 2,
+      "wins": 32,
+      "draws": 0,
       "losses": 0
      },
      "blue": {
@@ -324,12 +707,49 @@
       "losses": 0
      }
     },
-    "wall_deaths_pp": 1.1094,
-    "conversion": 0.6185,
+    "wall_deaths_pp": 0.3542,
+    "conversion": 0.874,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 3.627,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_example.jsonl"
+    "decide_p99_ms_max": 0.6643,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_baseline.jsonl"
+   },
+   {
+    "opponent": "example",
+    "n": 64,
+    "wins": 64,
+    "draws": 0,
+    "losses": 0,
+    "win_rate": 1.0,
+    "win_rate_ci": [
+     1.0,
+     1.0
+    ],
+    "goal_diff": 10.8281,
+    "goal_diff_ci": [
+     9.7344,
+     12.0
+    ],
+    "goals_for": 11.1094,
+    "goals_against": 0.2812,
+    "per_side": {
+     "red": {
+      "wins": 32,
+      "draws": 0,
+      "losses": 0
+     },
+     "blue": {
+      "wins": 32,
+      "draws": 0,
+      "losses": 0
+     }
+    },
+    "wall_deaths_pp": 0.2656,
+    "conversion": 0.7762,
+    "errors": 0,
+    "opponent_errors": 0,
+    "decide_p99_ms_max": 0.6626,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_example.jsonl"
    },
    {
     "opponent": "example2",
@@ -342,13 +762,13 @@
      1.0,
      1.0
     ],
-    "goal_diff": 5.7188,
+    "goal_diff": 11.3438,
     "goal_diff_ci": [
-     5.1094,
-     6.3281
+     10.3125,
+     12.4844
     ],
-    "goals_for": 5.7812,
-    "goals_against": 0.0625,
+    "goals_for": 11.3594,
+    "goals_against": 0.0156,
     "per_side": {
      "red": {
       "wins": 32,
@@ -361,68 +781,31 @@
       "losses": 0
      }
     },
-    "wall_deaths_pp": 1.0677,
-    "conversion": 0.6046,
+    "wall_deaths_pp": 0.1927,
+    "conversion": 0.806,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 3.6977,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_example2.jsonl"
+    "decide_p99_ms_max": 1.0474,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_example2.jsonl"
    },
    {
     "opponent": "relay",
     "n": 64,
-    "wins": 6,
-    "draws": 3,
-    "losses": 55,
-    "win_rate": 0.0938,
+    "wins": 12,
+    "draws": 2,
+    "losses": 50,
+    "win_rate": 0.1875,
     "win_rate_ci": [
-     0.0312,
-     0.1719
+     0.0938,
+     0.2969
     ],
-    "goal_diff": -4.4688,
+    "goal_diff": -3.3594,
     "goal_diff_ci": [
-     -5.3125,
-     -3.625
+     -4.4223,
+     -2.2344
     ],
-    "goals_for": 6.1719,
-    "goals_against": 10.6406,
-    "per_side": {
-     "red": {
-      "wins": 5,
-      "draws": 1,
-      "losses": 26
-     },
-     "blue": {
-      "wins": 1,
-      "draws": 2,
-      "losses": 29
-     }
-    },
-    "wall_deaths_pp": 1.599,
-    "conversion": 0.5775,
-    "errors": 0,
-    "opponent_errors": 0,
-    "decide_p99_ms_max": 4.6855,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_relay.jsonl"
-   },
-   {
-    "opponent": "balanced",
-    "n": 64,
-    "wins": 10,
-    "draws": 5,
-    "losses": 49,
-    "win_rate": 0.1562,
-    "win_rate_ci": [
-     0.0781,
-     0.25
-    ],
-    "goal_diff": -3.5312,
-    "goal_diff_ci": [
-     -4.5312,
-     -2.5625
-    ],
-    "goals_for": 5.6719,
-    "goals_against": 9.2031,
+    "goals_for": 8.0781,
+    "goals_against": 11.4375,
     "per_side": {
      "red": {
       "wins": 8,
@@ -430,218 +813,255 @@
       "losses": 23
      },
      "blue": {
-      "wins": 2,
-      "draws": 4,
-      "losses": 26
+      "wins": 4,
+      "draws": 1,
+      "losses": 27
      }
     },
-    "wall_deaths_pp": 1.5729,
-    "conversion": 0.5223,
+    "wall_deaths_pp": 0.3125,
+    "conversion": 0.6812,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 4.9396,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_balanced.jsonl"
+    "decide_p99_ms_max": 4.2554,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_relay.jsonl"
+   },
+   {
+    "opponent": "balanced",
+    "n": 64,
+    "wins": 17,
+    "draws": 5,
+    "losses": 42,
+    "win_rate": 0.2656,
+    "win_rate_ci": [
+     0.1562,
+     0.3906
+    ],
+    "goal_diff": -1.6406,
+    "goal_diff_ci": [
+     -2.6719,
+     -0.5625
+    ],
+    "goals_for": 8.1875,
+    "goals_against": 9.8281,
+    "per_side": {
+     "red": {
+      "wins": 10,
+      "draws": 1,
+      "losses": 21
+     },
+     "blue": {
+      "wins": 7,
+      "draws": 4,
+      "losses": 21
+     }
+    },
+    "wall_deaths_pp": 0.3229,
+    "conversion": 0.6558,
+    "errors": 0,
+    "opponent_errors": 0,
+    "decide_p99_ms_max": 10.2567,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_balanced.jsonl"
    },
    {
     "opponent": "guardian",
     "n": 64,
-    "wins": 20,
-    "draws": 7,
-    "losses": 37,
-    "win_rate": 0.3125,
+    "wins": 30,
+    "draws": 9,
+    "losses": 25,
+    "win_rate": 0.4688,
     "win_rate_ci": [
-     0.1875,
-     0.4375
+     0.3438,
+     0.5938
     ],
-    "goal_diff": -1.0938,
+    "goal_diff": 0.6875,
     "goal_diff_ci": [
-     -1.9062,
-     -0.2344
+     -0.0156,
+     1.4062
     ],
-    "goals_for": 5.1719,
-    "goals_against": 6.2656,
+    "goals_for": 7.4844,
+    "goals_against": 6.7969,
     "per_side": {
      "red": {
       "wins": 9,
-      "draws": 4,
-      "losses": 19
+      "draws": 6,
+      "losses": 17
      },
      "blue": {
-      "wins": 11,
+      "wins": 21,
       "draws": 3,
-      "losses": 18
+      "losses": 8
      }
     },
-    "wall_deaths_pp": 1.4375,
-    "conversion": 0.4926,
+    "wall_deaths_pp": 0.2708,
+    "conversion": 0.595,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 4.7893,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_guardian.jsonl"
+    "decide_p99_ms_max": 13.9384,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_guardian.jsonl"
    },
    {
     "opponent": "rusher",
     "n": 64,
-    "wins": 33,
-    "draws": 9,
-    "losses": 22,
-    "win_rate": 0.5156,
+    "wins": 42,
+    "draws": 8,
+    "losses": 14,
+    "win_rate": 0.6562,
     "win_rate_ci": [
-     0.3906,
-     0.6406
+     0.5312,
+     0.7812
     ],
-    "goal_diff": 0.0781,
+    "goal_diff": 2.0469,
     "goal_diff_ci": [
-     -0.5938,
-     0.7344
+     1.2188,
+     2.9219
     ],
-    "goals_for": 6.5938,
-    "goals_against": 6.5156,
+    "goals_for": 9.9375,
+    "goals_against": 7.8906,
     "per_side": {
      "red": {
-      "wins": 14,
-      "draws": 3,
-      "losses": 15
+      "wins": 21,
+      "draws": 5,
+      "losses": 6
      },
      "blue": {
-      "wins": 19,
-      "draws": 6,
-      "losses": 7
+      "wins": 21,
+      "draws": 3,
+      "losses": 8
      }
     },
-    "wall_deaths_pp": 1.5,
-    "conversion": 0.627,
+    "wall_deaths_pp": 0.3542,
+    "conversion": 0.737,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 2.6671,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_rusher.jsonl"
+    "decide_p99_ms_max": 1.9579,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_rusher.jsonl"
    },
    {
     "opponent": "camper",
     "n": 64,
-    "wins": 20,
-    "draws": 12,
-    "losses": 32,
-    "win_rate": 0.3125,
+    "wins": 37,
+    "draws": 8,
+    "losses": 19,
+    "win_rate": 0.5781,
     "win_rate_ci": [
-     0.2031,
-     0.4219
+     0.4688,
+     0.6875
     ],
-    "goal_diff": -0.3438,
+    "goal_diff": 1.4531,
     "goal_diff_ci": [
-     -0.8438,
-     0.1719
+     0.7188,
+     2.2031
     ],
-    "goals_for": 5.5938,
-    "goals_against": 5.9375,
+    "goals_for": 8.0156,
+    "goals_against": 6.5625,
     "per_side": {
      "red": {
-      "wins": 11,
-      "draws": 5,
-      "losses": 16
+      "wins": 20,
+      "draws": 3,
+      "losses": 9
      },
      "blue": {
-      "wins": 9,
-      "draws": 7,
-      "losses": 16
+      "wins": 17,
+      "draws": 5,
+      "losses": 10
      }
     },
-    "wall_deaths_pp": 1.4115,
-    "conversion": 0.5482,
+    "wall_deaths_pp": 0.349,
+    "conversion": 0.6196,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 11.6396,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_camper.jsonl"
+    "decide_p99_ms_max": 4.941,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_camper.jsonl"
    },
    {
     "opponent": "chaos",
     "n": 64,
-    "wins": 25,
-    "draws": 6,
-    "losses": 33,
-    "win_rate": 0.3906,
+    "wins": 42,
+    "draws": 4,
+    "losses": 18,
+    "win_rate": 0.6562,
     "win_rate_ci": [
-     0.2656,
-     0.5156
+     0.5312,
+     0.7656
     ],
-    "goal_diff": -0.5625,
+    "goal_diff": 2.4688,
     "goal_diff_ci": [
-     -1.375,
-     0.2188
+     1.2969,
+     3.7031
     ],
-    "goals_for": 6.1094,
-    "goals_against": 6.6719,
+    "goals_for": 9.5156,
+    "goals_against": 7.0469,
     "per_side": {
      "red": {
-      "wins": 9,
-      "draws": 4,
-      "losses": 19
+      "wins": 20,
+      "draws": 3,
+      "losses": 9
      },
      "blue": {
-      "wins": 16,
-      "draws": 2,
-      "losses": 14
+      "wins": 22,
+      "draws": 1,
+      "losses": 9
      }
     },
-    "wall_deaths_pp": 1.5365,
-    "conversion": 0.5708,
+    "wall_deaths_pp": 0.2969,
+    "conversion": 0.7391,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 8.3773,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_chaos.jsonl"
+    "decide_p99_ms_max": 2.0121,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_chaos.jsonl"
    },
    {
     "opponent": "steady",
     "n": 64,
-    "wins": 43,
-    "draws": 9,
-    "losses": 12,
-    "win_rate": 0.6719,
+    "wins": 56,
+    "draws": 4,
+    "losses": 4,
+    "win_rate": 0.875,
     "win_rate_ci": [
-     0.5469,
-     0.7812
+     0.7656,
+     0.9531
     ],
-    "goal_diff": 2.1406,
+    "goal_diff": 5.875,
     "goal_diff_ci": [
-     1.2969,
-     2.9844
+     4.3281,
+     7.4844
     ],
-    "goals_for": 6.7812,
-    "goals_against": 4.6406,
+    "goals_for": 10.5938,
+    "goals_against": 4.7188,
     "per_side": {
      "red": {
-      "wins": 20,
-      "draws": 6,
-      "losses": 6
+      "wins": 29,
+      "draws": 2,
+      "losses": 1
      },
      "blue": {
-      "wins": 23,
-      "draws": 3,
-      "losses": 6
+      "wins": 27,
+      "draws": 2,
+      "losses": 3
      }
     },
-    "wall_deaths_pp": 1.3125,
-    "conversion": 0.6227,
+    "wall_deaths_pp": 0.3125,
+    "conversion": 0.7986,
     "errors": 0,
     "opponent_errors": 0,
-    "decide_p99_ms_max": 7.046,
-    "records": "teams/exml_rl/gauntlet/exml_rl_model_vs_steady.jsonl"
+    "decide_p99_ms_max": 3.3094,
+    "records": "teams/exml_rl_pure/gauntlet/exml_rl_pure_model_vs_steady.jsonl"
    }
   ],
-  "mean_win_rate": 0.5344,
+  "mean_win_rate": 0.6687,
   "total": {
    "n": 640,
-   "wins": 342,
-   "draws": 55,
-   "losses": 243
+   "wins": 428,
+   "draws": 40,
+   "losses": 172
   },
   "errors": 0,
   "throughput": {
-   "workers": 3,
-   "elapsed_s": 1076.42,
-   "matches_per_min": 35.67,
-   "ticks_per_s": 3567.4,
-   "mean_match_wall_s": 5.03
+   "workers": 5,
+   "elapsed_s": 1250.25,
+   "matches_per_min": 30.71,
+   "ticks_per_s": 3071.4,
+   "mean_match_wall_s": 9.73
   }
  },
  "checks": {
@@ -652,172 +1072,47 @@
  },
  "incomplete": [],
  "status": "PASS",
- "latency_initial_loaded_machine": {
+ "latency_reference": {
+  "note": "Same model.py measured on the training machine (quiet), 3000 ticks",
   "runs": [
    {
-    "ticks": 6000,
+    "ticks": 3000,
     "stress_procs": 0,
-    "pass": false,
-    "verdict": {
-     "callback_p99_le_10ms": false,
-     "callback_max_le_20ms": false,
-     "zero_timeouts": false,
-     "model_loaded": true,
-     "zero_model_errors": true,
-     "decide_p99_le_3ms": true,
-     "all_pass": false
-    },
-    "callback": {
-     "n": 34560,
-     "mean_ms": 2.1738,
-     "p50_ms": 0.6355,
-     "p90_ms": 6.5849,
-     "p99_ms": 18.8271,
-     "p99.9_ms": 30.2099,
-     "max_ms": 959.7667,
-     "over_10ms": 2003,
-     "over_20ms": 281,
-     "over_30ms": 36
-    },
-    "inprocess_decide": {
-     "n": 5760,
-     "mean_ms": 0.1863,
-     "p50_ms": 0.1016,
-     "p90_ms": 0.163,
-     "p99_ms": 2.2721,
-     "p99.9_ms": 13.6939,
-     "max_ms": 16.4884,
-     "over_10ms": 13,
-     "over_20ms": 0,
-     "over_30ms": 0
-    },
-    "timeouts_or_respawns": 1,
-    "scores": [
-     {
-      "red": 3,
-      "blue": 2
-     }
-    ],
-    "cpu_count": 10,
-    "python": "3.14.9",
-    "summary": {
-     "policy": "teams/exml_rl/model.py",
-     "model_kib": 624.8,
-     "decode": "greedy",
-     "stress_procs": 0,
-     "cpu_count": 10,
-     "python": "3.14.9",
-     "thread_env_kept": false,
-     "inprocess": {
-      "import_s": 0.2509,
-      "decide": {
-       "n": 5760,
-       "mean_ms": 0.1863,
-       "p50_ms": 0.1016,
-       "p90_ms": 0.163,
-       "p99_ms": 2.2721,
-       "p99.9_ms": 13.6939,
-       "max_ms": 16.4884,
-       "over_10ms": 13,
-       "over_20ms": 0,
-       "over_30ms": 0
-      }
-     },
-     "engine": {
-      "callback": {
-       "n": 34560,
-       "mean_ms": 2.1738,
-       "p50_ms": 0.6355,
-       "p90_ms": 6.5849,
-       "p99_ms": 18.8271,
-       "p99.9_ms": 30.2099,
-       "max_ms": 959.7667,
-       "over_10ms": 2003,
-       "over_20ms": 281,
-       "over_30ms": 36
-      },
-      "timeouts_or_respawns": 1,
-      "harness_exceptions": 0,
-      "idle_results": 1,
-      "decide_errors_reported": 0,
-      "load_failures": 0,
-      "tracebacks": 0,
-      "worker_stderr_tail": "warn: placed 11/12 ramps (seed=1)\n",
-      "ready_s": {
-       "max": 1.023,
-       "mean": 0.567
-      },
-      "game_construct_s": [
-       0.546
-      ],
-      "step": {
-       "n": 6000,
-       "mean_ms": 6.3273,
-       "p50_ms": 2.5255,
-       "p90_ms": 17.1336,
-       "p99_ms": 40.4071,
-       "p99.9_ms": 80.1176,
-       "max_ms": 984.1176,
-       "over_10ms": 1061,
-       "over_20ms": 465,
-       "over_30ms": 170
-      },
-      "scores": [
-       {
-        "red": 3,
-        "blue": 2
-       }
-      ]
-     },
-     "verdict": {
-      "callback_p99_le_10ms": false,
-      "callback_max_le_20ms": false,
-      "zero_timeouts": false,
-      "model_loaded": true,
-      "zero_model_errors": true,
-      "decide_p99_le_3ms": true,
-      "all_pass": false
-     }
-    }
-   },
-   {
-    "ticks": 6000,
-    "stress_procs": 6,
-    "pass": false,
+    "pass": true,
     "verdict": {
      "callback_p99_le_10ms": true,
-     "callback_max_le_20ms": false,
-     "zero_timeouts": false,
+     "callback_max_le_20ms": true,
+     "zero_timeouts": true,
      "model_loaded": true,
      "zero_model_errors": true,
      "decide_p99_le_3ms": true,
-     "all_pass": false
+     "all_pass": true
     },
     "callback": {
-     "n": 34860,
-     "mean_ms": 1.0403,
-     "p50_ms": 0.5541,
-     "p90_ms": 1.3694,
-     "p99_ms": 7.0795,
-     "p99.9_ms": 29.3427,
-     "max_ms": 1571.9561,
-     "over_10ms": 243,
-     "over_20ms": 76,
-     "over_30ms": 35
-    },
-    "inprocess_decide": {
-     "n": 5760,
-     "mean_ms": 0.1127,
-     "p50_ms": 0.0765,
-     "p90_ms": 0.14,
-     "p99_ms": 0.9531,
-     "p99.9_ms": 2.985,
-     "max_ms": 8.2737,
+     "n": 17100,
+     "mean_ms": 0.1735,
+     "p50_ms": 0.1425,
+     "p90_ms": 0.2568,
+     "p99_ms": 0.6506,
+     "p99.9_ms": 2.1311,
+     "max_ms": 6.7534,
      "over_10ms": 0,
      "over_20ms": 0,
      "over_30ms": 0
     },
-    "timeouts_or_respawns": 4,
+    "inprocess_decide": {
+     "n": 5663,
+     "mean_ms": 0.0476,
+     "p50_ms": 0.0473,
+     "p90_ms": 0.052,
+     "p99_ms": 0.0558,
+     "p99.9_ms": 0.1015,
+     "max_ms": 0.4741,
+     "over_10ms": 0,
+     "over_20ms": 0,
+     "over_30ms": 0
+    },
+    "timeouts_or_respawns": 0,
     "scores": [
      {
       "red": 6,
@@ -825,92 +1120,55 @@
      }
     ],
     "cpu_count": 10,
-    "python": "3.14.9",
-    "summary": {
-     "policy": "teams/exml_rl/model.py",
-     "model_kib": 624.8,
-     "decode": "greedy",
-     "stress_procs": 6,
-     "cpu_count": 10,
-     "python": "3.14.9",
-     "thread_env_kept": false,
-     "inprocess": {
-      "import_s": 0.0675,
-      "decide": {
-       "n": 5760,
-       "mean_ms": 0.1127,
-       "p50_ms": 0.0765,
-       "p90_ms": 0.14,
-       "p99_ms": 0.9531,
-       "p99.9_ms": 2.985,
-       "max_ms": 8.2737,
-       "over_10ms": 0,
-       "over_20ms": 0,
-       "over_30ms": 0
-      }
-     },
-     "engine": {
-      "callback": {
-       "n": 34860,
-       "mean_ms": 1.0403,
-       "p50_ms": 0.5541,
-       "p90_ms": 1.3694,
-       "p99_ms": 7.0795,
-       "p99.9_ms": 29.3427,
-       "max_ms": 1571.9561,
-       "over_10ms": 243,
-       "over_20ms": 76,
-       "over_30ms": 35
-      },
-      "timeouts_or_respawns": 4,
-      "harness_exceptions": 0,
-      "idle_results": 4,
-      "decide_errors_reported": 0,
-      "load_failures": 0,
-      "tracebacks": 0,
-      "worker_stderr_tail": "warn: placed 11/12 ramps (seed=1)\n",
-      "ready_s": {
-       "max": 1.592,
-       "mean": 1.21
-      },
-      "game_construct_s": [
-       1.452
-      ],
-      "step": {
-       "n": 6000,
-       "mean_ms": 6.8397,
-       "p50_ms": 2.5894,
-       "p90_ms": 10.7969,
-       "p99_ms": 88.9123,
-       "p99.9_ms": 156.3255,
-       "max_ms": 1574.8978,
-       "over_10ms": 636,
-       "over_20ms": 361,
-       "over_30ms": 240
-      },
-      "scores": [
-       {
-        "red": 6,
-        "blue": 5
-       }
-      ]
-     },
-     "verdict": {
-      "callback_p99_le_10ms": true,
-      "callback_max_le_20ms": false,
-      "zero_timeouts": false,
-      "model_loaded": true,
-      "zero_model_errors": true,
-      "decide_p99_le_3ms": true,
-      "all_pass": false
+    "python": "3.14.9"
+   },
+   {
+    "ticks": 3000,
+    "stress_procs": 6,
+    "pass": true,
+    "verdict": {
+     "callback_p99_le_10ms": true,
+     "callback_max_le_20ms": true,
+     "zero_timeouts": true,
+     "model_loaded": true,
+     "zero_model_errors": true,
+     "decide_p99_le_3ms": true,
+     "all_pass": true
+    },
+    "callback": {
+     "n": 16440,
+     "mean_ms": 0.455,
+     "p50_ms": 0.3601,
+     "p90_ms": 0.7243,
+     "p99_ms": 1.8112,
+     "p99.9_ms": 4.1522,
+     "max_ms": 9.208,
+     "over_10ms": 0,
+     "over_20ms": 0,
+     "over_30ms": 0
+    },
+    "inprocess_decide": {
+     "n": 5663,
+     "mean_ms": 0.0475,
+     "p50_ms": 0.0474,
+     "p90_ms": 0.0521,
+     "p99_ms": 0.056,
+     "p99.9_ms": 0.1049,
+     "max_ms": 0.1685,
+     "over_10ms": 0,
+     "over_20ms": 0,
+     "over_30ms": 0
+    },
+    "timeouts_or_respawns": 0,
+    "scores": [
+     {
+      "red": 6,
+      "blue": 5
      }
-    }
+    ],
+    "cpu_count": 10,
+    "python": "3.14.9"
    }
-  ],
-  "load_before": [
-   24.23,
-   20.88,
-   21.81
   ]
  }
 }
