@@ -221,6 +221,10 @@
   {
    "time": "2026-10-27 16:10",
    "text": "Released weight-averaged plan B (33 snapshots, u1120\u20131760) as teams/exml_rl: 83% held-out; relay 44% (GD positive for the first time), balanced 56%."
+  },
+  {
+   "time": "2026-10-27 16:15",
+   "text": "Deadline set: experiments freeze 21:30 IST, final releases and verification done by 23:30 (hard 23:59)."
   }
  ]
 }
