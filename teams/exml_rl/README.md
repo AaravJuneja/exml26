@@ -10,9 +10,9 @@ file `model.py` (stdlib + numpy, greedy decoding). `policy.npz` is the source po
 | update | None |
 | samples | None |
 | architecture | mlp |
-| source | `runs/release-swa/b1_avg1120_1760_t0.7.npz` |
-| policy.npz sha256 | `6b5248e8cc2e1b5d99c65aa1d38b87a86dc38c3f80f6f4963e2db0a80747a615` |
-| model.py sha256 | `621672d0fe08fc7fff7dd519dc19d413287e20618b5682ccb9d582b48a2dbae9` |
-| model.py size | 693.7 KiB |
+| source | `runs/release-final/avg_160_2030_s20_t0.7.npz` |
+| policy.npz sha256 | `52c01491ab86d46a897ac371f242f94a95e9d6019959776be5dc981328210ce4` |
+| model.py sha256 | `7d771f0aa02ea744e9375950fe3c2156ea4f376ec1bbbb5ea1e42489ee22da72` |
+| model.py size | 693.8 KiB |
 | decode | sample |
-| date (UTC) | 2026-10-27T10:05:46+00:00 |
+| date (UTC) | 2026-10-27T13:51:17+00:00 |
