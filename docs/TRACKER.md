@@ -123,6 +123,10 @@ Working log. The summary is `docs/tracker.html`.
 | **Experiment freeze (20:20 IST)** | no further training or exploration; final verification and docs only |
 | Matchup vs evvls-dumb/exml-core19 (laptop; `docs/reviews/matchup-exml-core19.md`) | security review clean; exml_rl **64-0-0** (GD +11.0), exml_rl_pure **62-1-1** (+8.8). Their model: BC/DAgger movement MLP + PPO GRU option policy + scripted roles, paced at ~10.6 speed |
 | **Final verification (20:41 IST, fresh clone of 4d07c97)** | engine/rpc/main.py byte-identical to game-env; both release reports PASS (exml_rl model.py 7d771f0a…, exml_rl_pure 2fe7922b…); official main.py matches: exml_rl 17-2 vs baseline, exml_rl_pure 16-0 vs example, exml_rl 16-10 vs exml_rl_pure; 187 tests passed, 1 skipped. **Final.** |
+| Comments stripped from both deployed model.py (`tools/strip_comments.py`) | AST-identical; identical actions on 138,300 decisions; audit + Python 3.9.25 smoke pass; malformed-observation fuzz (~19.5k calls): 0 crashes, 0 invalid outputs |
+| `submission/hybrid/model.py`, `submission/pure/model.py` | ready-to-upload copies, byte-identical to teams/exml_rl and teams/exml_rl_pure |
+| Final hybrid vs pure (training machine, 64 games, seeds 7100–7131) | hybrid **45-6-13** (70% [61, 80]), GD **+2.39** [+1.56, +3.22] |
+| **Final verification (23:12 IST, fresh clone of d7d7a28)** | engine/rpc/main.py identical to game-env; both reports PASS; submission files identical to releases; official main.py: hybrid 16-0 vs baseline, pure 10-0 vs example, hybrid 12-9 vs pure; **187 passed, 1 skipped** (first run hit the laptop's full /tmp tmpfs; re-run with temp files on disk) |
 | Training window | stop all training-machine work by ~06:30 IST 27 Oct (watchdog `stop_at_6.sh` fires 06:25; resume via RESUME file). Afterwards: laptop only (`~/exml-ts`, Linux FS), one task at a time |
 | g1 generalist league (old space) | Flat after 112M samples (relay 17%, guardian 31%). Stopped. |
 | g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |
