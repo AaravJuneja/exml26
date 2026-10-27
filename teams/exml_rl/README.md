@@ -7,12 +7,12 @@ file `model.py` (stdlib + numpy, greedy decoding). `policy.npz` is the source po
 | field | value |
 |---|---|
 | run | b1 |
-| update | 1440 |
-| samples | 674120706 |
+| update | None |
+| samples | None |
 | architecture | mlp |
-| source | `runs/release-u1440/u01440_t0.7.npz` |
-| policy.npz sha256 | `88ee358d5e792bbd84e35557653e9e35560f30ecad110477757ed024de2e3722` |
-| model.py sha256 | `9d4445421ea37c7d6666ac6b79e150cd083545d5f5a4971c1ef2bbb5f71cc4c7` |
-| model.py size | 693.5 KiB |
+| source | `runs/release-swa/b1_avg1120_1760_t0.7.npz` |
+| policy.npz sha256 | `6b5248e8cc2e1b5d99c65aa1d38b87a86dc38c3f80f6f4963e2db0a80747a615` |
+| model.py sha256 | `621672d0fe08fc7fff7dd519dc19d413287e20618b5682ccb9d582b48a2dbae9` |
+| model.py size | 693.7 KiB |
 | decode | sample |
-| date (UTC) | 2026-10-27T05:52:29+00:00 |
+| date (UTC) | 2026-10-27T10:05:46+00:00 |

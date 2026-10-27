@@ -1,5 +1,5 @@
 {
- "summary": "<b>Main release: teams/exml_rl = plan B, b1 u1440 sampled at temperature 0.7 \u2014 81% wins on 640 held-out games</b> (previous u960: 72%; pure RL: 54%). relay 39% (GD \u22120.1), balanced 48% (+0.3), guardian 73%, rusher 83%, camper 86%, chaos 81%, steady 97%, provided bots 98\u2013100%. Latency (laptop) p99 2.5 ms, max 19.7 ms under stress; audit and parity pass.<br><br>Architecture: a learned desired-velocity policy (PPO, heading/speed/jump each tick) with a deterministic physics actuator, kickstarted from a scripted teacher, then RL. <b>Pure end-to-end release teams/exml_rl_pure: distilled student d4, 67% held-out</b> (previous pure release 54%). <b>Open issue:</b> wall deaths drift up in later training (0.03 \u2192 0.6/pl). training-machine use stopped 06:25 IST 27 Oct; work continues on the laptop.",
+ "summary": "<b>Main release: teams/exml_rl = plan B, weight average of b1 updates 1120\u20131760 (33 snapshots), sampled at temperature 0.7 \u2014 83% wins on 640 held-out games</b> (u1440: 81%; u960: 72%). relay 44% (GD +0.19), balanced 56% (+1.59), guardian 84%, rusher/camper/chaos 83%, steady 98%, provided bots 100%. Latency (quiet machine) p99 0.7 ms, max 7.0 ms; 14.3 ms with 6 stress processes.<br><br><b>Pure end-to-end release teams/exml_rl_pure: distilled student d4, 67% held-out.</b><br><br>Running: b2 (training continued from the averaged weights, lr 1e-4) and a wider averaging-window search on the training machine.",
  "milestones": [
   {
    "id": "M0",
@@ -41,11 +41,11 @@
    "id": "M6",
    "title": "Freeze, export, final 64-seed test, latency audit",
    "state": "active",
-   "note": "teams/exml_rl = plan B u1440 \u03c40.7 (81% held-out); teams/exml_rl_pure = distilled pure network d4 (67%)"
+   "note": "teams/exml_rl = plan B weight-averaged u1120\u20131760 \u03c40.7 (83% held-out); teams/exml_rl_pure = distilled pure network d4 (67%)"
   }
  ],
  "eval_header": [
-  "teams/exml_rl (b1 u1440, \u03c40.7) vs",
+  "teams/exml_rl (avg u1120\u20131760, \u03c40.7) vs",
   "W-D-L (64)",
   "win %",
   "goal diff"
@@ -55,61 +55,61 @@
    "baseline",
    "64-0-0",
    "100",
-   "+11.75"
+   "+12.02"
   ],
   [
    "example",
    "64-0-0",
    "100",
-   "+11.44"
+   "+12.17"
   ],
   [
    "example2",
-   "63-1-0",
-   "98",
-   "+11.86"
+   "64-0-0",
+   "100",
+   "+12.86"
   ],
   [
    "relay",
-   "25-7-32",
-   "39",
-   "-0.11"
+   "28-7-29",
+   "44",
+   "+0.19"
   ],
   [
    "balanced",
-   "31-3-30",
-   "48",
-   "+0.30"
+   "36-6-22",
+   "56",
+   "+1.59"
   ],
   [
    "guardian",
-   "47-7-10",
-   "73",
-   "+2.42"
+   "54-3-7",
+   "84",
+   "+3.39"
   ],
   [
    "rusher",
-   "53-4-7",
+   "53-8-3",
    "83",
-   "+3.36"
+   "+4.08"
   ],
   [
    "camper",
-   "55-3-6",
-   "86",
-   "+3.09"
+   "53-4-7",
+   "83",
+   "+3.95"
   ],
   [
    "chaos",
-   "52-4-8",
-   "81",
-   "+4.16"
+   "53-4-7",
+   "83",
+   "+4.84"
   ],
   [
    "steady",
-   "62-2-0",
-   "97",
-   "+6.47"
+   "63-1-0",
+   "98",
+   "+8.05"
   ]
  ],
  "runs": [
@@ -217,6 +217,10 @@
   {
    "time": "2026-10-27 11:50",
    "text": "Released the distilled pure network as teams/exml_rl_pure: 67% held-out (from 54%). Fixed a ~15 ms first-call latency spike in sampled exports. Wall-death fine-tune and per-head temperature tested: no gain."
+  },
+  {
+   "time": "2026-10-27 16:10",
+   "text": "Released weight-averaged plan B (33 snapshots, u1120\u20131760) as teams/exml_rl: 83% held-out; relay 44% (GD positive for the first time), balanced 56%."
   }
  ]
 }
