@@ -93,6 +93,12 @@ Working log. The summary is `docs/tracker.html`.
 | b1 u1080 vs relay (held-out 64 games, sampled) | 27% (17-5-42), GD −1.75; ≈ u960. Relay progress flattening |
 | Compute split (27 Oct) | b1 5 workers; distillation run (d*) ≤3; breakthrough work (x*) ≤3 |
 | Breakthrough work | running: relay-loss diagnosis; team-aware (MAPPO) critic; targeted rewards/features; log in docs/reviews/breakthrough-log.md |
+| Paired A/B u960 vs b1 u1620 (sampled, 128/opp) | ≈ equal: relay −0.03, balanced −0.10, rusher −0.02, chaos +0.55 (n.s.), guardian **−0.63**, camper −0.59 (win −12 pts). u1620 wall deaths 0.5/pl vs 0.12. Not released |
+| b1 wall-death drift | training wall deaths 0.03/pl (u745) → 0.5/pl (u1500+) once kickstarting ended; likely cause of the late plateau. Fix candidates: stronger wall penalty, small permanent kick term |
+| b1 snapshot sweep (32 games/cell, seeds 3200–3215, sampled) | mean win / GD over relay, balanced, guardian, camper, rusher: u800 55% / +1.05; **u960 57% / +1.56**; u1040 64% / +1.74; u1120 64% / +2.47; u1280 67% / +2.33; **u1440 68% / +2.94**; u1600 73% / +2.48; u1760 54% / +0.96; u1920 58% / +1.63; u2030 65% / +1.71. Peak ≈ u1120–u1600; noisy at n=32 |
+| A/B u960@τ0.7 vs u1440@τ0.7 (128/opp) | u1440 better: mean dGD **+0.39**, dWin +4.2 pts; balanced **+0.85** [+0.06, +1.68], camper **+0.88** [+0.26, +1.56], rusher win **+11** pts [2, 21]; relay −0.42 [−1.41, +0.60] n.s. (u960 τ1 on the same seeds: relay 27%, −1.84) |
+| **Release teams/exml_rl = b1 u1440 @ τ0.7 (sampled)** | PASS (laptop). Held-out 640: **81% wins** (516): baseline/example 100%, example2 98%, steady 97%, camper 86%, rusher 83%, chaos 81%, guardian 73%, **balanced 48% (+0.30)**, **relay 39% (−0.11)**. Wall 0.25–0.54/pl. Latency p99 2.5 ms, max 13.4 ms (stress 3: 19.7 ms) on the laptop |
+| Training window | stop all training-machine work by ~06:30 IST 27 Oct (watchdog `stop_at_6.sh` fires 06:25; resume via RESUME file). Afterwards: laptop only (`~/exml-ts`, Linux FS), one task at a time |
 | g1 generalist league (old space) | Flat after 112M samples (relay 17%, guardian 31%). Stopped. |
 | g1: generalist league from m4c (broad scripted mix + greedy pool + mirror, 9 workers) | running. Goal: mid-tier opponents (guardian/camper/rusher/chaos), the likeliest resemblance to unknown tournament entries |
 | _(old note)_ Support potential Motivation: reset → re-pickup median 195 ticks (us) vs 51 (relay), m4c u280 replay seed 1003 (won 8–5) |
